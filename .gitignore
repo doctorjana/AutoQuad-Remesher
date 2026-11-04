@@ -1,0 +1,25 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Blender local auto-saves and backups
+*.blend@*
+*.blend1
+*.blend2
+*.blend3
+
+# Development, builds, and release archives
+build/
+dist/
+release/*.zip
+*.zip
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# System and logs
+.DS_Store
+Thumbs.db
+*.log

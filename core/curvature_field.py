@@ -58,7 +58,6 @@ class CurvatureFieldSolver:
             center = face.calc_center_median()
             
             # Construct local orthonormal tangent frame (e1, e2, n)
-            # Find an arbitrary vector non-parallel to n
             up = Vector((0.0, 0.0, 1.0)) if abs(n.z) < 0.9 else Vector((1.0, 0.0, 0.0))
             e1 = n.cross(up).normalized()
             e2 = n.cross(e1).normalized()
@@ -82,7 +81,6 @@ class CurvatureFieldSolver:
                     
                 other_center = other_face.calc_center_median()
                 dv = other_center - center
-                # Project dv into tangent plane
                 dv_proj = dv - n * dv.dot(n)
                 dist = dv_proj.length
                 if dist < 1e-6:
@@ -90,14 +88,11 @@ class CurvatureFieldSolver:
                 
                 v_unit = dv_proj / dist
                 dn = other_face.normal - n
-                # Directional normal curvature
                 k_n = -dn.dot(v_unit) / dist
                 
-                # Decompose v_unit into (e1, e2)
                 vx = v_unit.dot(e1)
                 vy = v_unit.dot(e2)
                 
-                # Weight by inverse distance
                 w = 1.0 / dist
                 a_sum += w * (vx * vx) * k_n
                 b_sum += w * (vx * vy) * k_n
@@ -121,7 +116,6 @@ class CurvatureFieldSolver:
             k1 = tr / 2.0 + sqrt_disc  # Max principal curvature
             k2 = tr / 2.0 - sqrt_disc  # Min principal curvature
             
-            # Calculate principal eigenvector direction in tangent plane
             if abs(B) > 1e-6:
                 v1_x = k1 - C
                 v1_y = B
@@ -156,24 +150,20 @@ class CurvatureFieldSolver:
                 face.index, (0.0, 0.0, Vector((1, 0, 0)), Vector((0, 1, 0)))
             )
             
-            # Check if any face edge is a feature edge
             has_feature = False
             for edge in face.edges:
                 if edge.index in self.feature_edges:
                     edge_vec = (edge.verts[1].co - edge.verts[0].co).normalized()
-                    # Tangent projection
                     edge_tangent = (edge_vec - n * edge_vec.dot(n)).normalized()
                     initial_fields[face.index] = edge_tangent
                     has_feature = True
                     break
                     
             if not has_feature:
-                # Use direction of maximum curvature if curvature is significant
                 curv_diff = abs(k1 - k2)
                 if curv_diff > 0.05:
-                    initial_fields[face.index] = dir_min  # Align edge loops along min curvature (fillet flow)
+                    initial_fields[face.index] = dir_min  # Align edge loops along min curvature
                 else:
-                    # Weak curvature, use default tangent
                     ref = Vector((0.0, 0.0, 1.0)) if abs(n.z) < 0.9 else Vector((1.0, 0.0, 0.0))
                     initial_fields[face.index] = n.cross(ref).normalized()
 
@@ -183,7 +173,6 @@ class CurvatureFieldSolver:
         for _ in range(smoothing_iterations):
             next_field = {}
             for face in self.bm.faces:
-                # Keep fixed if on a strict feature edge
                 is_feature_locked = any(e.index in self.feature_edges for e in face.edges)
                 if is_feature_locked:
                     next_field[face.index] = current_field[face.index]
@@ -200,14 +189,11 @@ class CurvatureFieldSolver:
                             continue
                         
                         v_neigh = current_field[neighbor.index]
-                        # Transport v_neigh to face's tangent plane
                         v_neigh_tangent = (v_neigh - n * v_neigh.dot(n))
                         if v_neigh_tangent.length < 1e-5:
                             continue
                         v_neigh_tangent.normalize()
                         
-                        # 4-RoSy alignment: choose one of 4 orthogonal rotations of v_neigh_tangent
-                        # that minimizes angular difference with v_curr
                         best_match = v_neigh_tangent
                         best_dot = -2.0
                         

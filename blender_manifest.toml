@@ -5,11 +5,11 @@ schema_version = "1.0.0"
 id = "quadflow_retopology"
 version = "1.0.0"
 name = "QuadFlow Retopology"
-tagline = "Curvature cross-field and topology-optimized quad remesher with in-viewport GPU visualization"
+tagline = "Curvature cross-field and topology-optimized quad remesher"
 maintainer = "QuadFlow Core Team <contact@quadflow3d.org>"
 type = "add-on"
 
-tags = ["Mesh", "Retopology", "Modeling", "Remesh", "UV"]
+tags = ["Mesh", "Modeling", "Sculpt", "UV"]
 
 blender_version_min = "4.2.0"
 license = [

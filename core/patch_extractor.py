@@ -95,12 +95,10 @@ class QuadPatchExtractor:
                     v.co[self.axis_idx] = 0.0
                     
         # Step 3: Target Resolution Budget Scaling
-        # Each quad consists of 2 triangles when paired.
-        # If symmetry is active, the half mesh needs target_half_quads * 2 triangles.
         target_half_quads = (self.target_quad_count // 2) if symmetry else self.target_quad_count
         target_tri_count = max(60, target_half_quads * 2)
         
-        # 3A. UPSAMPLING: If source mesh is coarser than target resolution (e.g. Suzanne 500 faces)
+        # 3A. UPSAMPLING: If source mesh is coarser than target resolution
         for pass_idx in range(8):
             work_bm.faces.ensure_lookup_table()
             work_bm.edges.ensure_lookup_table()
@@ -110,14 +108,12 @@ class QuadPatchExtractor:
                 break
                 
             if current_tri_count * 2 <= target_tri_count:
-                # Subdivide all edges exceeding target sizing
                 threshold = target_edge_len * 0.85
                 edges_to_split = [e for e in work_bm.edges if e.calc_length() > threshold]
                 if not edges_to_split:
                     sorted_edges = sorted(work_bm.edges, key=lambda e: e.calc_length(), reverse=True)
                     edges_to_split = sorted_edges[:max(10, len(sorted_edges) // 2)]
             else:
-                # Approaching target: selectively subdivide only enough of the longest edges
                 needed = (target_tri_count - current_tri_count) // 2
                 sorted_edges = sorted(work_bm.edges, key=lambda e: e.calc_length(), reverse=True)
                 edges_to_split = sorted_edges[:max(10, needed)]
@@ -128,7 +124,6 @@ class QuadPatchExtractor:
             bmesh.ops.subdivide_edges(work_bm, edges=edges_to_split, cuts=1, use_grid_fill=False)
             bmesh.ops.triangulate(work_bm, faces=work_bm.faces[:])
             
-            # Re-snap new vertices to the high-poly surface using BVH
             work_bm.verts.ensure_lookup_table()
             for v in work_bm.verts:
                 if symmetry and abs(v.co[self.axis_idx]) <= (target_edge_len * 0.4):
@@ -142,7 +137,7 @@ class QuadPatchExtractor:
                     if loc:
                         v.co = loc
 
-        # 3B. DECIMATION: If mesh resolution exceeds target resolution (e.g. high-poly sculpts)
+        # 3B. DECIMATION: If mesh resolution exceeds target resolution
         for pass_idx in range(8):
             work_bm.faces.ensure_lookup_table()
             work_bm.edges.ensure_lookup_table()
@@ -165,7 +160,6 @@ class QuadPatchExtractor:
                 
             candidate_edges.sort(key=lambda x: x[0])
             
-            # Non-adjacent independent set of edge collapses
             visited_verts = set()
             safe_edges = []
             for _, e in candidate_edges:
@@ -190,7 +184,6 @@ class QuadPatchExtractor:
         work_bm.faces.ensure_lookup_table()
         
         # Step 4: Valence Regularization for Quad Pairing
-        # In triangular networks, valence-6 nodes become optimal valence-4 quad interiors!
         for _ in range(3):
             work_bm.edges.ensure_lookup_table()
             work_bm.faces.ensure_lookup_table()
@@ -272,7 +265,7 @@ class QuadPatchExtractor:
         work_bm.edges.ensure_lookup_table()
         work_bm.verts.ensure_lookup_table()
         
-        # Step 6: 100% Pure Quad Guarantee (Pairs any remaining adjacent triangles)
+        # Step 6: 100% Pure Quad Guarantee
         for _ in range(3):
             work_bm.faces.ensure_lookup_table()
             work_bm.edges.ensure_lookup_table()
@@ -347,7 +340,6 @@ class QuadPatchExtractor:
             for v in list(work_bm.verts):
                 if abs(v.co[self.axis_idx]) <= 1e-5:
                     v.co[self.axis_idx] = 0.0
-                    # SEAM VERTEX: Reuse existing vertex directly
                     mirror_vert_map[v] = v
                 else:
                     new_co = Vector(v.co)
