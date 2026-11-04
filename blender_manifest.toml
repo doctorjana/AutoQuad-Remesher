@@ -1,0 +1,25 @@
+# Blender 4.2+ Extension Manifest
+# Schema version for Blender Extensions platform
+schema_version = "1.0.0"
+
+id = "quadflow_retopology"
+version = "1.0.0"
+name = "QuadFlow Retopology"
+tagline = "Curvature cross-field and topology-optimized quad remesher with in-viewport GPU visualization"
+maintainer = "QuadFlow Core Team <contact@quadflow3d.org>"
+type = "add-on"
+
+tags = ["Mesh", "Retopology", "Modeling", "Remesh", "UV"]
+
+blender_version_min = "4.2.0"
+license = [
+    "SPDX:GPL-3.0-or-later",
+]
+copyright = [
+    "2026 QuadFlow Project Authors",
+]
+
+website = "https://quadflow3d.org"
+
+[permissions]
+# No external network or system disk permissions needed - runs 100% locally
