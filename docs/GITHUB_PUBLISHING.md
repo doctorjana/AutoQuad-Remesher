@@ -1,57 +1,49 @@
 # GitHub Publishing & Release Instructions
 
-This guide provides step-by-step instructions for publishing **QuadFlow Retopology** as a public open-source repository on GitHub.
+Instructions for publishing **AutoQuad Remesher** to GitHub under user account `doctorjana`.
 
 ---
 
-## 1. Initial Git Repository Setup
-
-If publishing from the local repository directory:
+## 1. Local Git Commit
 
 ```bash
 cd d:\Retopo\quadflow_retopology
 
-# Verify git status
-git status
-
-# Add all files to staging
 git add .
-
-# Create initial commit
-git commit -m "feat: initial release of QuadFlow Retopology as Blender 4.2+ Extension (v1.0.0)"
+git commit -m "feat(release): AutoQuad Remesher v1.1.0 by Doctor Jana"
 ```
 
 ---
 
 ## 2. Linking to Remote GitHub Repository
 
-1. Create a new public repository on GitHub (e.g. `quadflow-retopology` or `quadflow`).
-   - Do **not** initialize with README, License, or .gitignore (these are already configured locally).
-2. Link your local repository to the remote origin:
+1. Create a repository on GitHub under: `https://github.com/doctorjana/autoquad_remesher`
+2. Link and push your local branch:
 
 ```bash
-git remote add origin https://github.com/<your-username-or-org>/quadflow-retopology.git
+git remote add origin https://github.com/doctorjana/autoquad_remesher.git
 git branch -M main
 git push -u origin main
 ```
 
 ---
 
-## 3. Creating a GitHub Release
+## 3. GitHub Pages Setup
 
-1. On GitHub, navigate to **Releases > Create a new release**.
-2. Set the release tag: `v1.0.0`.
-3. Set the release title: `QuadFlow Retopology v1.0.0 - Production Release`.
-4. Copy the release notes from [CHANGELOG.md](../CHANGELOG.md).
-5. Attach the distribution binary:
-   - File: `release/quadflow_retopology-1.0.0.zip`
-6. Click **Publish release**.
+To enable the default GitHub Pages site:
+1. On GitHub, navigate to **Settings > Pages**.
+2. Under **Build and deployment > Source**, select **Deploy from a branch**.
+3. Choose branch: `main` and folder: `/ (root)` or `/docs`.
+4. Click **Save**.
+5. Your GitHub Pages site will be live at:
+   **https://doctorjana.github.io/autoquad_remesher/**
 
 ---
 
-## 4. Recommended Repository Topics & Settings
+## 4. GitHub Release
 
-Under repository **About** on GitHub:
-- **Description:** Curvature cross-field and topology-optimized quad remesher for Blender 4.2+
-- **Website:** https://quadflow3d.org
-- **Topics:** `blender`, `blender-addon`, `blender-extension`, `retopology`, `remesh`, `quad-mesh`, `computational-geometry`, `bmesh`, `python`
+1. Go to **Releases > Create a new release**.
+2. Tag: `v1.1.0`.
+3. Title: `AutoQuad Remesher v1.1.0`.
+4. Attach `release/autoquad_remesher-1.1.0.zip`.
+5. Click **Publish release**.

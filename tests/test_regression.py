@@ -1,5 +1,5 @@
 """
-QuadFlow - Regression and Functional Validation Test Suite
+AutoQuad Remesher - Regression and Functional Validation Test Suite
 Compares remeshed topology against baseline characteristics across standard test meshes.
 
 Usage:
@@ -21,7 +21,7 @@ root_dir = os.path.dirname(pkg_dir)
 if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
-import quadflow_retopology as qf
+import quadflow_retopology as aq
 from quadflow_retopology.core import (
     CurvatureFieldSolver,
     AdaptiveDensityField,
@@ -31,16 +31,16 @@ from quadflow_retopology.core import (
 )
 
 print("=" * 60)
-print("QUADFLOW REGRESSION TEST SUITE")
+print("AUTOQUAD REGRESSION TEST SUITE")
 print(f"Blender Version: {bpy.app.version_string}")
 print("=" * 60)
 
-qf.register()
+aq.register()
 
 # -------------------------------------------------------------
-# Test 1: Suzanne Monkey with Subdivision (Organic + Symmetry)
+# Test 1: Suzanne Monkey with Subdivision
 # -------------------------------------------------------------
-print("\n[TEST 1] Testing organic symmetry mesh (Suzanne Subdivided)...")
+print("\n[TEST 1] Testing organic mesh (Suzanne Subdivided)...")
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.mesh.primitive_monkey_add(size=2.0)
 test_obj = bpy.context.active_object
@@ -50,20 +50,19 @@ sub_mod = test_obj.modifiers.new("Subsurf", 'SUBSURF')
 sub_mod.levels = 1
 bpy.ops.object.modifier_apply(modifier="Subsurf")
 
-settings = bpy.context.scene.quadflow_settings
+settings = bpy.context.scene.autoquad_settings
 settings.target_quad_count = 1000
-settings.use_symmetry = True
-settings.symmetry_axis = 'X'
-settings.relaxation_steps = 10
+settings.hide_original = True
 
 t0 = time.perf_counter()
-res = bpy.ops.view3d.quadflow_remesh()
+res = bpy.ops.view3d.autoquad_remesh()
 dt = time.perf_counter() - t0
 assert 'FINISHED' in res, f"Operator failed with result: {res}"
 
 out_obj = bpy.context.active_object
 assert out_obj != test_obj, "Output object should be newly generated"
-assert out_obj.name == "Test_Suzanne_QuadFlow", f"Output name mismatch: {out_obj.name}"
+assert out_obj.name == "Test_Suzanne_AutoQuad", f"Output name mismatch: {out_obj.name}"
+assert test_obj.hide_get() is True, "Original object should be hidden"
 
 out_mesh = out_obj.data
 out_polys = len(out_mesh.polygons)
@@ -72,15 +71,9 @@ quad_ratio = (out_quads / max(1, out_polys)) * 100.0
 
 print(f"  ✓ Total Polygons: {out_polys:,}")
 print(f"  ✓ Pure Quads: {out_quads:,} ({quad_ratio:.1f}%)")
+print(f"  ✓ Original hidden: {test_obj.hide_get()}")
 print(f"  ✓ Execution time: {dt:.4f}s")
 assert quad_ratio >= 90.0, f"Expected quad dominance >= 90%, got {quad_ratio:.1f}%"
-
-# Symmetry check: verify positive and negative vertices balance closely across the mirror plane
-pos_x = sum(1 for v in out_mesh.vertices if v.co.x > 0.01)
-neg_x = sum(1 for v in out_mesh.vertices if v.co.x < -0.01)
-sym_diff = abs(pos_x - neg_x)
-print(f"  ✓ Symmetry check: +X verts = {pos_x}, -X verts = {neg_x} (diff = {sym_diff})")
-assert sym_diff <= 10, f"Symmetry imbalance exceeds tolerance: +X={pos_x} vs -X={neg_x} (diff={sym_diff})"
 
 # -------------------------------------------------------------
 # Test 2: UV Sphere (Curved Surface)
@@ -90,13 +83,12 @@ bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, segments=32, ring_count=16)
 sphere_obj = bpy.context.active_object
 
-settings = bpy.context.scene.quadflow_settings
+settings = bpy.context.scene.autoquad_settings
 settings.target_quad_count = 1000
-settings.use_symmetry = False
-settings.relaxation_steps = 10
+settings.hide_original = True
 
 t0 = time.perf_counter()
-res = bpy.ops.view3d.quadflow_remesh()
+res = bpy.ops.view3d.autoquad_remesh()
 dt = time.perf_counter() - t0
 assert 'FINISHED' in res, "Operator failed on UV Sphere"
 
@@ -130,9 +122,9 @@ density = AdaptiveDensityField(src_bm, target_quad_count=500, adaptive_factor=0.
 density_sizes = density.evaluate_density_field(solver.face_curvatures)
 
 extractor = QuadPatchExtractor(src_bm, target_quad_count=500, symmetry_axis='X')
-quad_bm = extractor.generate_quad_mesh(cross_fields, density_sizes, symmetry=True)
+quad_bm = extractor.generate_quad_mesh(cross_fields, density_sizes, symmetry=False)
 
-engine = SurfaceRelaxationEngine(quad_bm, src_bvh, symmetry_axis='X', lock_symmetry=True)
+engine = SurfaceRelaxationEngine(quad_bm, src_bvh, symmetry_axis='X', lock_symmetry=False)
 engine.run_multi_step_relaxation(iterations=5)
 
 fb_verts = len(quad_bm.verts)

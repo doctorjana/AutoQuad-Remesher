@@ -59,8 +59,8 @@ def run_retopology(context, source_obj, settings, src_bvh=None):
             context.view_layer.objects.active = source_obj
             
             temp_mesh = source_obj.data.copy()
-            temp_mesh.name = f"{source_obj.name}_QuadFlow_Temp"
-            temp_obj = bpy.data.objects.new(f"{source_obj.name}_QuadFlow_Temp", temp_mesh)
+            temp_mesh.name = f"{source_obj.name}_AutoQuad_Temp"
+            temp_obj = bpy.data.objects.new(f"{source_obj.name}_AutoQuad_Temp", temp_mesh)
             temp_obj.matrix_world = source_obj.matrix_world.copy()
             context.collection.objects.link(temp_obj)
             

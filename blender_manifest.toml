@@ -2,11 +2,11 @@
 # Schema version for Blender Extensions platform
 schema_version = "1.0.0"
 
-id = "quadflow_retopology"
-version = "1.0.0"
-name = "QuadFlow Retopology"
-tagline = "Curvature cross-field and topology-optimized quad remesher"
-maintainer = "QuadFlow Core Team <contact@quadflow3d.org>"
+id = "autoquad_remesher"
+version = "1.1.0"
+name = "AutoQuad Remesher"
+tagline = "Automatic curvature-guided quad remesher"
+maintainer = "Doctor Jana <https://github.com/doctorjana>"
 type = "add-on"
 
 tags = ["Mesh", "Modeling", "Sculpt", "UV"]
@@ -16,10 +16,10 @@ license = [
     "SPDX:GPL-3.0-or-later",
 ]
 copyright = [
-    "2026 QuadFlow Project Authors",
+    "2026 Doctor Jana",
 ]
 
-website = "https://quadflow3d.org"
+website = "https://doctorjana.github.io/autoquad_remesher/"
 
 [permissions]
 # No external network or system disk permissions needed - runs 100% locally

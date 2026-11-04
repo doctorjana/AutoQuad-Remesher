@@ -1,9 +1,10 @@
 """
-QuadFlow - Properties Package
+AutoQuad Remesher - Properties Package
 """
 
-from .settings import QuadFlowSettings
+from .settings import AutoQuadSettings, QuadFlowSettings
 
 __all__ = [
+    "AutoQuadSettings",
     "QuadFlowSettings",
 ]
