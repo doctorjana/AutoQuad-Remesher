@@ -78,7 +78,14 @@ def make_manifold(context, obj, threshold=0.0001, sides=0):
                 break
             bm_states.add(bm_key)
             
-        # 7. Make all normals face consistently outwards
+        # 7. Triangulate N-gons (faces with > 4 vertices) to prevent algorithm skew
+        bm_edit = bmesh.from_edit_mesh(obj.data)
+        ngon_faces = [f for f in bm_edit.faces if len(f.verts) > 4]
+        if ngon_faces:
+            bmesh.ops.triangulate(bm_edit, faces=ngon_faces, quad_method='BEAUTY', ngon_method='BEAUTY')
+        bmesh.update_edit_mesh(obj.data)
+        
+        # 8. Make all normals face consistently outwards
         bpy.ops.mesh.select_all(action='SELECT')
         bpy.ops.mesh.normals_make_consistent(inside=False)
         
