@@ -5,6 +5,16 @@ All notable changes to the AutoQuad Remesher extension are documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.4] - 2026-11-06
+
+### Added
+- **Non-Destructive Decimate Option in Advanced Options:**
+  - Added a `Decimate Mesh` toggle under Advanced Options (disabled by default).
+  - Non-destructively applies a Decimate modifier to the internal working guide mesh prior to remeshing, while preserving the user's original object, modifiers, and high-resolution geometry completely untouched.
+  - Supports both **Collapse** (default ratio `0.1` / 10% remaining) and **Un-Subdivide** (customizable iteration rollback) modes.
+  - Automatically falls back to Collapse if Un-Subdivide is chosen on irregular, non-grid geometry.
+  - Guarantees full sculpt fidelity: the original high-resolution un-decimated mesh BVH is preserved, allowing the surface projection engine to snap the newly generated quad vertices back to the exact high-detail surface.
+
 ## [1.2.3] - 2026-11-06
 
 ### Fixed

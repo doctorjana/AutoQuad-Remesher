@@ -54,6 +54,39 @@ class AutoQuadSettings(PropertyGroup):
         default=False
     )
     
+    use_decimate: BoolProperty(
+        name="Decimate Mesh",
+        description="Non-destructively decimate or unsubdivide the working guide mesh before remeshing",
+        default=False
+    )
+    
+    decimate_mode: EnumProperty(
+        name="Decimate Method",
+        description="Method used to decimate the working guide mesh",
+        items=[
+            ('COLLAPSE', "Collapse (Ratio)", "Collapses edges by ratio (default 0.1 / 10% remaining)"),
+            ('UNSUBDIV', "Un-Subdivide", "Reverses grid subdivision levels on quad meshes"),
+        ],
+        default='COLLAPSE'
+    )
+    
+    decimate_ratio: FloatProperty(
+        name="Ratio",
+        description="Target fraction of faces to keep (0.1 = keep 10% / decimate 90%)",
+        default=0.1,
+        min=0.001,
+        max=1.0,
+        subtype='FACTOR'
+    )
+    
+    decimate_unsubdivide_iterations: IntProperty(
+        name="Iterations",
+        description="Number of grid subdivision levels to roll back",
+        default=2,
+        min=1,
+        max=16
+    )
+    
     hide_original: BoolProperty(
         name="Hide Original Mesh",
         description="Hide the source mesh object automatically after remeshing is generated",

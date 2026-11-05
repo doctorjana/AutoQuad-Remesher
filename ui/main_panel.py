@@ -81,6 +81,14 @@ class VIEW3D_PT_autoquad_main(Panel):
                 sub_row = inner_col.row()
                 sub_row.separator(factor=2.0)
                 sub_row.prop(settings, "fill_holes_on_preprocess", text="Seal Boundary Holes")
+            inner_col.prop(settings, "use_decimate", text="Decimate Mesh")
+            if settings.use_decimate:
+                dec_box = inner_col.box()
+                dec_box.prop(settings, "decimate_mode", text="Method")
+                if settings.decimate_mode == 'UNSUBDIV':
+                    dec_box.prop(settings, "decimate_unsubdivide_iterations", text="Iterations")
+                else:
+                    dec_box.prop(settings, "decimate_ratio", text="Ratio")
             inner_col.prop(settings, "hide_original")
             inner_col.separator()
             inner_col.operator(

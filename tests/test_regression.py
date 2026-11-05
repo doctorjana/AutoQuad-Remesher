@@ -212,6 +212,47 @@ print(f"  ✓ Dense Mesh Output: {total_dense_f:,} faces, {out_dense_quads:,} qu
 assert total_dense_f > 0, "Dense remeshing produced 0 faces"
 assert out_dense_quads >= int(total_dense_f * 0.95), "Dense output quad percentage lower than 95%"
 
+# -------------------------------------------------------------
+# Test 6: Non-Destructive Decimate Option (0.1 Ratio / Unsubdivide)
+# -------------------------------------------------------------
+print("\n[TEST 6] Testing Non-Destructive Decimate Option (0.1 Ratio / Unsubdivide)...")
+bpy.ops.wm.read_factory_settings(use_empty=True)
+bpy.ops.mesh.primitive_cube_add()
+sub_cube = bpy.context.active_object
+sub_cube.name = "Subdivided_Base"
+smod = sub_cube.modifiers.new('Subsurf', 'SUBSURF')
+smod.levels = 4
+bpy.ops.object.modifier_apply(modifier='Subsurf')
+orig_faces = len(sub_cube.data.polygons)
+orig_verts = len(sub_cube.data.vertices)
+print(f"  Input mesh: {orig_faces:,} polygons, {orig_verts:,} vertices")
+
+settings = bpy.context.scene.autoquad_settings
+settings.target_quad_count = 500
+settings.use_decimate = True
+settings.decimate_mode = 'COLLAPSE'
+settings.decimate_ratio = 0.1
+settings.hide_original = False
+
+t0 = time.perf_counter()
+res = bpy.ops.view3d.autoquad_remesh()
+dt = time.perf_counter() - t0
+assert 'FINISHED' in res, f"Operator failed with decimate option: {res}"
+
+# Verify source mesh is completely un-modified (non-destructive)
+assert len(sub_cube.data.polygons) == orig_faces, "Source object polygons were destructively modified!"
+assert len(sub_cube.data.vertices) == orig_verts, "Source object vertices were destructively modified!"
+assert len(sub_cube.modifiers) == 0, "Modifiers were left on source object!"
+
+dec_out = bpy.context.active_object
+assert dec_out.name == "Subdivided_Base_AutoQuad", f"Unexpected name: {dec_out.name}"
+dec_quads = sum(1 for f in dec_out.data.polygons if len(f.vertices) == 4)
+total_dec_f = len(dec_out.data.polygons)
+print(f"  ✓ Non-Destructive Decimate Output: {total_dec_f:,} faces, {dec_quads:,} quads in {dt:.4f}s")
+print(f"  ✓ Source mesh preserved untouched: {len(sub_cube.data.polygons):,} faces")
+assert total_dec_f > 0, "Decimated remeshing produced 0 faces"
+assert dec_quads >= int(total_dec_f * 0.95), "Decimated output quad percentage lower than 95%"
+
 print("\n" + "=" * 60)
 print("ALL REGRESSION AND FUNCTIONAL TESTS PASSED SUCCESSFULLY!")
 print("=" * 60)

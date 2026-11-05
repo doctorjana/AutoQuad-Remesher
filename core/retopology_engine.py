@@ -182,13 +182,40 @@ def run_retopology(context, source_obj, settings, src_bvh=None):
             make_manifold(context, temp_obj, fill_holes=fill_holes_opt, preserve_curvature=True)
             temp_obj.data.update()
             
-        # Build reference BVH from working geometry
+        # Build reference BVH from working geometry (before decimation to keep full surface resolution)
         if getattr(settings, "preprocess_mesh", False) or src_bvh is None:
             src_bm_temp = bmesh.new()
             src_bm_temp.from_mesh(temp_obj.data)
             src_bm_temp.transform(temp_obj.matrix_world)
             src_bvh = BVHTree.FromBMesh(src_bm_temp, epsilon=1e-5)
             src_bm_temp.free()
+            
+        # -------------------------------------------------------------
+        # Optional: Non-destructive User Decimate Pre-pass
+        # -------------------------------------------------------------
+        if getattr(settings, "use_decimate", False):
+            dmod = temp_obj.modifiers.new('AutoQuad_UserDecimate', 'DECIMATE')
+            d_mode = getattr(settings, "decimate_mode", 'COLLAPSE')
+            ratio_val = getattr(settings, "decimate_ratio", 0.1)
+            
+            if d_mode == 'UNSUBDIV':
+                dmod.decimate_type = 'UNSUBDIV'
+                dmod.iterations = getattr(settings, "decimate_unsubdivide_iterations", 2)
+            else:
+                dmod.decimate_type = 'COLLAPSE'
+                dmod.ratio = ratio_val
+                
+            orig_poly_count = len(temp_obj.data.polygons)
+            bpy.ops.object.modifier_apply(modifier='AutoQuad_UserDecimate')
+            temp_obj.data.update()
+            
+            # If unsubdivide did not reduce face count (e.g. non-grid topology), fallback to collapse
+            if d_mode == 'UNSUBDIV' and len(temp_obj.data.polygons) >= orig_poly_count:
+                dmod_fb = temp_obj.modifiers.new('AutoQuad_UserDecimate_FB', 'DECIMATE')
+                dmod_fb.decimate_type = 'COLLAPSE'
+                dmod_fb.ratio = ratio_val
+                bpy.ops.object.modifier_apply(modifier='AutoQuad_UserDecimate_FB')
+                temp_obj.data.update()
             
         # -------------------------------------------------------------
         # 1. Primary Engine: Native C++ QuadriFlow with Self-Healing Multi-Stage Recovery
