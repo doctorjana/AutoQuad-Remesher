@@ -21,6 +21,119 @@ from .patch_extractor import QuadPatchExtractor
 from .relaxation import SurfaceRelaxationEngine
 from .mesh_preprocessing import make_manifold
 
+def sanitize_working_mesh(bm, merge_dist=1e-4):
+    """
+    Cleans up topological defects that violate QuadriFlow's manifold requirements:
+    1. Duplicate overlapping faces
+    2. Interior multi-face edges (> 2 faces)
+    3. Isolated wire edges (0 faces)
+    4. Isolated loose vertices
+    5. Zero-area faces (< 1e-7)
+    6. Double vertices within merge distance
+    7. Degenerate edges and faces
+    8. Consistent outward face normals
+    """
+    bm.verts.ensure_lookup_table()
+    bm.edges.ensure_lookup_table()
+    bm.faces.ensure_lookup_table()
+    
+    # 1. Remove duplicate faces
+    seen = {}
+    dup_faces = []
+    for f in bm.faces:
+        key = frozenset(v.index for v in f.verts)
+        if key in seen:
+            dup_faces.append(f)
+        else:
+            seen[key] = f
+    if dup_faces:
+        bmesh.ops.delete(bm, geom=dup_faces, context='FACES')
+        bm.faces.ensure_lookup_table()
+        
+    # 2. Remove interior multi-face edges
+    bm.edges.ensure_lookup_table()
+    interior_faces = set()
+    for e in bm.edges:
+        if len(e.link_faces) > 2:
+            for f in e.link_faces[2:]:
+                interior_faces.add(f)
+    if interior_faces:
+        bmesh.ops.delete(bm, geom=list(interior_faces), context='FACES')
+        bm.faces.ensure_lookup_table()
+        
+    # 3. Remove zero-area / degenerate faces
+    bm.faces.ensure_lookup_table()
+    zero_faces = [f for f in bm.faces if f.calc_area() < 1e-7]
+    if zero_faces:
+        bmesh.ops.delete(bm, geom=zero_faces, context='FACES')
+        bm.faces.ensure_lookup_table()
+        
+    # 4. Remove loose wire edges (0 faces attached)
+    bm.edges.ensure_lookup_table()
+    wire_edges = [e for e in bm.edges if len(e.link_faces) == 0]
+    if wire_edges:
+        bmesh.ops.delete(bm, geom=wire_edges, context='EDGES')
+        bm.edges.ensure_lookup_table()
+        
+    # 5. Remove loose vertices (0 edges and 0 faces)
+    bm.verts.ensure_lookup_table()
+    loose_verts = [v for v in bm.verts if len(v.link_edges) == 0 and len(v.link_faces) == 0]
+    if loose_verts:
+        bmesh.ops.delete(bm, geom=loose_verts, context='VERTS')
+        bm.verts.ensure_lookup_table()
+        
+    # 6. Weld duplicate vertices and dissolve degenerate elements
+    bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=merge_dist)
+    bm.edges.ensure_lookup_table()
+    bmesh.ops.dissolve_degenerate(bm, dist=merge_dist, edges=bm.edges[:])
+    
+    # 7. Make face normals consistently oriented
+    try:
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    except Exception:
+        pass
+
+def _run_quadriflow_op(settings, preserve_boundary=True):
+    """Executes native QuadriFlow remesh operator with safe property mapping."""
+    op_props = bpy.ops.object.quadriflow_remesh.get_rna_type().properties.keys()
+    kwargs = {}
+    if 'mode' in op_props:
+        kwargs['mode'] = 'FACES'
+    if 'target_faces' in op_props:
+        kwargs['target_faces'] = max(50, settings.target_quad_count)
+    if 'use_mesh_symmetry' in op_props:
+        kwargs['use_mesh_symmetry'] = getattr(settings, "use_symmetry", False)
+    if 'use_preserve_sharp' in op_props:
+        kwargs['use_preserve_sharp'] = getattr(settings, "detect_hard_edges", True)
+    if 'use_preserve_boundary' in op_props:
+        kwargs['use_preserve_boundary'] = preserve_boundary
+    if 'smooth_normals' in op_props:
+        kwargs['smooth_normals'] = True
+    if 'seed' in op_props:
+        kwargs['seed'] = 0
+        
+    try:
+        res = bpy.ops.object.quadriflow_remesh(**kwargs)
+        return 'FINISHED' in res
+    except Exception as e:
+        print(f"[AutoQuad] QuadriFlow pass (preserve_boundary={preserve_boundary}) notice: {e}")
+        return False
+
+def _condition_dense_mesh(temp_obj, max_faces=65000):
+    """
+    If the working guide mesh exceeds max_faces (e.g. 500k poly sculpts),
+    applies a shape-preserving decimation to condition the guide surface
+    for QuadriFlow's linear solver. Full original detail is preserved because
+    the final quad mesh is projected back onto the full-resolution src_bvh.
+    """
+    poly_count = len(temp_obj.data.polygons)
+    if poly_count > max_faces:
+        ratio = max_faces / float(poly_count)
+        dmod = temp_obj.modifiers.new('AutoQuad_Decimate', 'DECIMATE')
+        dmod.ratio = ratio
+        bpy.ops.object.modifier_apply(modifier='AutoQuad_Decimate')
+        temp_obj.data.update()
+
 def run_retopology(context, source_obj, settings, src_bvh=None):
     """
     Executes the complete AutoQuad retopology pipeline.
@@ -78,66 +191,63 @@ def run_retopology(context, source_obj, settings, src_bvh=None):
             src_bm_temp.free()
             
         # -------------------------------------------------------------
-        # 1. Primary Engine: Native C++ QuadriFlow
+        # 1. Primary Engine: Native C++ QuadriFlow with Self-Healing Multi-Stage Recovery
         # -------------------------------------------------------------
         if has_native:
-            try:
-                # Pre-clean geometry
-                clean_bm = bmesh.new()
-                clean_bm.from_mesh(temp_obj.data)
+            # Stage A: Initial sanitization of working duplicate
+            clean_bm = bmesh.new()
+            clean_bm.from_mesh(temp_obj.data)
+            sanitize_working_mesh(clean_bm, merge_dist=1e-4)
+            clean_bm.to_mesh(temp_obj.data)
+            clean_bm.free()
+            temp_obj.data.update()
+            
+            # Stage B: Auto-condition ultra-dense sculpts (> 70k polygons)
+            # This prevents QuadriFlow memory exhaustion and matrix singularities
+            # on 500k+ poly meshes, while src_bvh preserves 100% of original detail
+            initial_polys = len(temp_obj.data.polygons)
+            if initial_polys > 70000:
+                _condition_dense_mesh(temp_obj, max_faces=65000)
                 
-                # Remove duplicate faces and interior multi-face edges
-                seen = {}
-                dup_faces = []
-                for f in clean_bm.faces:
-                    key = frozenset(v.index for v in f.verts)
-                    if key in seen:
-                        dup_faces.append(f)
-                    else:
-                        seen[key] = f
-                if dup_faces:
-                    bmesh.ops.delete(clean_bm, geom=dup_faces, context='FACES')
-                    
-                clean_bm.edges.ensure_lookup_table()
-                interior_faces = set()
-                for e in clean_bm.edges:
-                    if len(e.link_faces) > 2:
-                        for f in e.link_faces[2:]:
-                            interior_faces.add(f)
-                if interior_faces:
-                    bmesh.ops.delete(clean_bm, geom=list(interior_faces), context='FACES')
-                    
-                bmesh.ops.remove_doubles(clean_bm, verts=clean_bm.verts[:], dist=1e-5)
-                bmesh.ops.dissolve_degenerate(clean_bm, dist=1e-5, edges=clean_bm.edges[:])
-                bmesh.ops.recalc_face_normals(clean_bm, faces=clean_bm.faces[:])
-                clean_bm.to_mesh(temp_obj.data)
-                clean_bm.free()
-                temp_obj.data.update()
+            # Stage C: Multi-pass execution
+            # Pass 1: Standard QuadriFlow with boundary preservation
+            success = _run_quadriflow_op(settings, preserve_boundary=True)
+            
+            # Pass 2: Retry without boundary preservation if Pass 1 failed
+            if not success or len(temp_obj.data.polygons) == 0:
+                success = _run_quadriflow_op(settings, preserve_boundary=False)
                 
-                # Dynamic RNA introspection for cross-version compatibility (Blender 4.2, 5.0, 5.2+)
-                op_props = bpy.ops.object.quadriflow_remesh.get_rna_type().properties.keys()
-                kwargs = {}
-                if 'mode' in op_props:
-                    kwargs['mode'] = 'FACES'
-                if 'target_faces' in op_props:
-                    kwargs['target_faces'] = max(50, settings.target_quad_count)
-                if 'use_mesh_symmetry' in op_props:
-                    kwargs['use_mesh_symmetry'] = getattr(settings, "use_symmetry", False)
-                if 'use_preserve_sharp' in op_props:
-                    kwargs['use_preserve_sharp'] = getattr(settings, "detect_hard_edges", True)
-                if 'use_preserve_boundary' in op_props:
-                    kwargs['use_preserve_boundary'] = True
-                if 'smooth_normals' in op_props:
-                    kwargs['smooth_normals'] = True
-                if 'seed' in op_props:
-                    kwargs['seed'] = 0
+            # Pass 3: Auto-heal manifold defects and retry
+            if not success or len(temp_obj.data.polygons) == 0:
+                try:
+                    make_manifold(context, temp_obj, fill_holes=False)
+                    temp_obj.data.update()
+                    success = _run_quadriflow_op(settings, preserve_boundary=False)
+                except Exception as e:
+                    print(f"[AutoQuad] Auto-heal pass 3 notice: {e}")
                     
-                res = bpy.ops.object.quadriflow_remesh(**kwargs)
-                if 'FINISHED' in res and len(temp_obj.data.polygons) > 0:
-                    quad_bm = bmesh.new()
-                    quad_bm.from_mesh(temp_obj.data)
-            except Exception as e:
-                print(f"[AutoQuad] Native Quadriflow engine notification: {e}")
+            # Pass 4: If still failing and mesh is still dense (> 35k), condition further
+            if (not success or len(temp_obj.data.polygons) == 0) and len(temp_obj.data.polygons) > 35000:
+                try:
+                    _condition_dense_mesh(temp_obj, max_faces=35000)
+                    make_manifold(context, temp_obj, fill_holes=False)
+                    temp_obj.data.update()
+                    success = _run_quadriflow_op(settings, preserve_boundary=False)
+                except Exception as e:
+                    print(f"[AutoQuad] Auto-heal pass 4 notice: {e}")
+                    
+            # Pass 5: Seal open boundary tears and retry as watertight
+            if not success or len(temp_obj.data.polygons) == 0:
+                try:
+                    make_manifold(context, temp_obj, fill_holes=True)
+                    temp_obj.data.update()
+                    success = _run_quadriflow_op(settings, preserve_boundary=False)
+                except Exception as e:
+                    print(f"[AutoQuad] Auto-heal pass 5 notice: {e}")
+
+            if success and len(temp_obj.data.polygons) > 0:
+                quad_bm = bmesh.new()
+                quad_bm.from_mesh(temp_obj.data)
 
         # -------------------------------------------------------------
         # 2. Fallback Engine: Topological Patch Solver

@@ -183,6 +183,35 @@ assert is_manifold is True, "Output mesh was expected to be manifold after prepr
 assert out_quads > 0, "Output mesh has 0 quads"
 assert flawed_cube.hide_get() is True, "Source object should be hidden"
 
+# -------------------------------------------------------------
+# Test 5: Ultra-Dense Mesh Auto-Conditioning (> 80k polygons)
+# -------------------------------------------------------------
+print("\n[TEST 5] Testing Ultra-Dense Mesh Auto-Conditioning (> 80k polygons)...")
+bpy.ops.wm.read_factory_settings(use_empty=True)
+bpy.ops.mesh.primitive_uv_sphere_add(segments=320, ring_count=320)
+dense_obj = bpy.context.active_object
+dense_obj.name = "Dense_Sculpt"
+initial_faces = len(dense_obj.data.polygons)
+initial_verts = len(dense_obj.data.vertices)
+print(f"  Input dense mesh: {initial_faces:,} polygons, {initial_verts:,} vertices")
+
+settings = bpy.context.scene.autoquad_settings
+settings.target_quad_count = 1500
+settings.preprocess_mesh = False
+
+t0 = time.perf_counter()
+res = bpy.ops.view3d.autoquad_remesh()
+dt = time.perf_counter() - t0
+assert 'FINISHED' in res, f"Operator failed on dense mesh: {res}"
+
+out_dense = bpy.context.active_object
+assert out_dense.name == "Dense_Sculpt_AutoQuad", f"Unexpected name: {out_dense.name}"
+out_dense_quads = sum(1 for f in out_dense.data.polygons if len(f.vertices) == 4)
+total_dense_f = len(out_dense.data.polygons)
+print(f"  ✓ Dense Mesh Output: {total_dense_f:,} faces, {out_dense_quads:,} quads in {dt:.4f}s")
+assert total_dense_f > 0, "Dense remeshing produced 0 faces"
+assert out_dense_quads >= int(total_dense_f * 0.95), "Dense output quad percentage lower than 95%"
+
 print("\n" + "=" * 60)
 print("ALL REGRESSION AND FUNCTIONAL TESTS PASSED SUCCESSFULLY!")
 print("=" * 60)

@@ -111,7 +111,11 @@ class VIEW3D_OT_autoquad_remesh(bpy.types.Operator):
                     
             target_bm = run_retopology(context, obj, settings, src_bvh)
             if target_bm is None or len(target_bm.faces) == 0:
-                self.report({'ERROR'}, "AutoQuad: Failed to generate quad geometry.")
+                self.report(
+                    {'ERROR'},
+                    "AutoQuad: Unable to generate quad topology. "
+                    "If your mesh has severe non-manifold tears, try enabling 'Preprocess Mesh' in Advanced Options."
+                )
                 return {'CANCELLED'}
                 
             if wm and hasattr(wm, "progress_update"):

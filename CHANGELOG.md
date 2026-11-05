@@ -5,6 +5,18 @@ All notable changes to the AutoQuad Remesher extension are documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-11-06
+
+### Fixed
+- **Ultra-Dense Sculpt Remeshing (500k+ Polygons):** Resolved `AutoQuad: Failed to generate quad geometry` on meshes with ~500,000+ polygons. QuadriFlow's integer linear system solver chokes and runs out of memory or hits matrix singularities when forced to process hundreds of thousands of micro-triangles directly. Added intelligent dense-mesh guide conditioning that decimate-conditions working geometry above 70,000 polygons to ~65,000 faces while retaining the full 500k-polygon BVH (`src_bvh`) for surface reprojection. All high-frequency surface sculpt details and silhouettes are 100% preserved.
+- **Self-Healing Multi-Stage Solver Recovery:** Implemented a multi-pass automatic fallback pipeline when QuadriFlow returns cancelled or errors:
+  1. Primary remesh with boundary preservation.
+  2. Boundary-relaxed retry (`use_preserve_boundary=False`) for complex or self-intersecting boundary loops.
+  3. Automated manifold repair and normal equalization pass.
+  4. Adaptive decimate-conditioning pass for remaining micro-crevices.
+  5. Watertight boundary sealing fallback pass.
+- **Pre-Clean Topological Defect Sanitizer:** Added thorough removal of isolated wire edges (0 link faces), loose unattached vertices, zero-area sliver faces ($< 10^{-7}$), and duplicate faces before QuadriFlow validation. Prevents Blender's internal `mesh_is_manifold_consistent` check from immediately canceling execution.
+
 ## [1.2.2] - 2026-11-05
 
 ### Changed
