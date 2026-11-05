@@ -65,7 +65,8 @@ def run_retopology(context, source_obj, settings, src_bvh=None):
         # Optional: Make Manifold Preprocessing (3D Print Toolbox Logic)
         # -------------------------------------------------------------
         if getattr(settings, "preprocess_mesh", False):
-            make_manifold(context, temp_obj)
+            fill_holes_opt = getattr(settings, "fill_holes_on_preprocess", False)
+            make_manifold(context, temp_obj, fill_holes=fill_holes_opt, preserve_curvature=True)
             temp_obj.data.update()
             
         # Build reference BVH from working geometry

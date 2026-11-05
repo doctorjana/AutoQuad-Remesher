@@ -48,6 +48,12 @@ class AutoQuadSettings(PropertyGroup):
         default=False
     )
     
+    fill_holes_on_preprocess: BoolProperty(
+        name="Fill Holes",
+        description="Seal open boundary holes when preprocessing (uncheck to preserve open surfaces and cut openings)",
+        default=False
+    )
+    
     hide_original: BoolProperty(
         name="Hide Original Mesh",
         description="Hide the source mesh object automatically after remeshing is generated",

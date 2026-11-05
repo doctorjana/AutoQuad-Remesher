@@ -5,6 +5,16 @@ All notable changes to the AutoQuad Remesher extension are documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-11-05
+
+### Fixed
+- **Curvature-Preserving Hole Filling:** Fixed issue where deleting faces from a curved surface (such as a sphere) followed by Make Manifold created a flat, sunken chord facet of razor-thin sliver triangles that distorted remeshed geometry. Now intelligently pokes N-gons, subdivides radial edges, and inflates/smooths interior vertices outward along boundary normals to match the surrounding curvature and volume.
+- **Open Boundary Preservation:** "Make Mesh Manifold" and "Preprocess Mesh" now preserve intentional open boundaries by default (`fill_holes=False`). Open surfaces (e.g. cut spheres, eye sockets, hollow domes, clothing) are now cleaned of true non-manifold defects (loose vertices/edges, interior faces, duplicates, degenerate elements) without destroying intentional openings.
+- **Tangential Boundary Relaxation:** Fixed boundary shrinkage in `SurfaceRelaxationEngine` on open meshes by using tangential boundary smoothing instead of chord midpoint averaging, preventing boundary loops from puckering or shrinking inward during relaxation.
+
+### Added
+- **Seal Boundary Holes Toggle:** Added an explicit toggle in both the "Make Mesh Manifold" operator redo panel and under "Preprocess Mesh" in the UI allowing users to choose whether to keep open boundaries intact or seal them with curvature reconstruction.
+
 ## [1.1.0] - 2026-11-04
 
 ### Changed

@@ -77,6 +77,10 @@ class VIEW3D_PT_autoquad_main(Panel):
         if settings.show_advanced:
             inner_col = adv_box.column(align=True)
             inner_col.prop(settings, "preprocess_mesh")
+            if settings.preprocess_mesh:
+                sub_row = inner_col.row()
+                sub_row.separator(factor=2.0)
+                sub_row.prop(settings, "fill_holes_on_preprocess", text="Seal Boundary Holes")
             inner_col.prop(settings, "hide_original")
             inner_col.separator()
             inner_col.operator(

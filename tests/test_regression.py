@@ -160,6 +160,7 @@ bpy.ops.object.mode_set(mode='OBJECT')
 settings = bpy.context.scene.autoquad_settings
 settings.target_quad_count = 600
 settings.preprocess_mesh = True
+settings.fill_holes_on_preprocess = True
 settings.hide_original = True
 
 t0 = time.perf_counter()

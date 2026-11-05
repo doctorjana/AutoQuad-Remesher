@@ -46,8 +46,17 @@ class SurfaceRelaxationEngine:
                     edge.other_vert(vert) for edge in vert.link_edges if edge.is_boundary
                 ]
                 if len(boundary_neighbors) == 2:
-                    target_pos = (boundary_neighbors[0].co + boundary_neighbors[1].co) * 0.5
-                    smoothed_co = vert.co.lerp(target_pos, laplacian_weight * 0.4)
+                    v0 = boundary_neighbors[0].co
+                    v1 = boundary_neighbors[1].co
+                    tangent = v1 - v0
+                    if tangent.length > 1e-6:
+                        tangent_unit = tangent.normalized()
+                        mid = (v0 + v1) * 0.5
+                        disp = mid - vert.co
+                        tangent_disp = tangent_unit * disp.dot(tangent_unit)
+                        smoothed_co = vert.co + tangent_disp * (laplacian_weight * 0.4)
+                    else:
+                        smoothed_co = vert.co.copy()
                 else:
                     smoothed_co = vert.co.copy()
             else:
