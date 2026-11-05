@@ -75,9 +75,15 @@ class VIEW3D_PT_autoquad_main(Panel):
             emboss=False
         )
         if settings.show_advanced:
-            inner_col = adv_box.column()
+            inner_col = adv_box.column(align=True)
             inner_col.prop(settings, "preprocess_mesh")
             inner_col.prop(settings, "hide_original")
+            inner_col.separator()
+            inner_col.operator(
+                "view3d.autoquad_make_manifold",
+                text="Make Mesh Manifold",
+                icon='MESH_DATA'
+            )
 
 # Backward-compatibility alias
 VIEW3D_PT_quadflow_main = VIEW3D_PT_autoquad_main

@@ -21,6 +21,7 @@ from .ui import VIEW3D_PT_autoquad_main, unregister_draw_handlers
 from .operators import (
     VIEW3D_OT_autoquad_remesh,
     VIEW3D_OT_quadflow_remesh,
+    VIEW3D_OT_autoquad_make_manifold,
 )
 
 classes = (
@@ -28,6 +29,7 @@ classes = (
     VIEW3D_PT_autoquad_main,
     VIEW3D_OT_autoquad_remesh,
     VIEW3D_OT_quadflow_remesh,
+    VIEW3D_OT_autoquad_make_manifold,
 )
 
 def register():

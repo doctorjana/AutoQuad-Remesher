@@ -27,8 +27,9 @@ AutoQuad Remesher provides a clean, single-click interface designed for speed an
 | Adaptive Size: 0.65                      |
 +------------------------------------------+
 | ▼ Advanced Options                       |
-|   [ ] Preprocess Mesh (Make Manifold)    |
+|   [ ] Preprocess Mesh (Auto-repair)      |
 |   [x] Hide Original Mesh                 |
+|   [🛠️ Make Mesh Manifold]                 |  <-- Standalone testing button
 +------------------------------------------+
 ```
 
