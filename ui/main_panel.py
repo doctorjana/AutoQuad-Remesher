@@ -50,7 +50,7 @@ class VIEW3D_PT_autoquad_main(Panel):
             load_row = load_box.row(align=True)
             load_row.scale_y = 1.6
             load_row.alignment = 'CENTER'
-            load_row.label(text="Remeshing in progress...", icon='TIME')
+            load_row.label(text="Remeshing in progress...", icon='PREVIEW_LOADING')
         else:
             col = layout.column(align=True)
             col.scale_y = 1.5

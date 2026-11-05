@@ -5,6 +5,14 @@ All notable changes to the AutoQuad Remesher extension are documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-11-05
+
+### Changed
+- **Modernized Loading Feedback & Cursor Experience:**
+  - Replaced the generic operating system `'WAIT'` spinning donut/hourglass cursor with Blender's precision modeling reticle cursor (`'CROSSHAIR'`), avoiding the appearance of a frozen or unresponsive application while retaining clean visual interactivity.
+  - Upgraded the dynamic UI loading indicator in the 3D Viewport sidebar from the static `'TIME'` icon to Blender's animated `'PREVIEW_LOADING'` spinner icon.
+  - Added native Blender Status Bar integration: updates the bottom status bar with `AutoQuad: Remeshing quad topology in progress...` during calculation and restores it cleanly upon completion.
+
 ## [1.2.1] - 2026-11-05
 
 ### Fixed

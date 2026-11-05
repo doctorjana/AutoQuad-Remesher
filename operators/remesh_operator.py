@@ -37,17 +37,23 @@ class VIEW3D_OT_autoquad_remesh(bpy.types.Operator):
         if getattr(bpy.app, "background", False):
             return self.execute(context)
             
-        # In GUI mode: Activate UI loading indicator and wait cursor, then yield a frame for redraw
+        # In GUI mode: Activate UI loading indicator, precision cursor, and status text, then yield a frame for redraw
         settings.is_processing = True
         if hasattr(context, "area") and context.area:
             context.area.tag_redraw()
             
+        if hasattr(context, "workspace") and context.workspace:
+            try:
+                context.workspace.status_text_set("AutoQuad: Remeshing quad topology in progress...")
+            except Exception:
+                pass
+
         if hasattr(context, "window") and context.window:
             try:
-                context.window.cursor_modal_set('WAIT')
+                context.window.cursor_modal_set('CROSSHAIR')
             except Exception:
                 try:
-                    context.window.cursor_set('WAIT')
+                    context.window.cursor_set('CROSSHAIR')
                 except Exception:
                     pass
                     
@@ -175,13 +181,19 @@ class VIEW3D_OT_autoquad_remesh(bpy.types.Operator):
             self._cleanup_loading(context)
 
     def _cleanup_loading(self, context):
-        """Restores cursor, removes timer, and resets processing flag."""
+        """Restores cursor, clears status text, removes timer, and resets processing flag."""
         settings = getattr(context.scene, "autoquad_settings", None)
         if settings is None:
             settings = getattr(context.scene, "quadflow_settings", None)
         if settings:
             settings.is_processing = False
             
+        if hasattr(context, "workspace") and context.workspace:
+            try:
+                context.workspace.status_text_set(None)
+            except Exception:
+                pass
+
         if self._timer and hasattr(context, "window_manager") and context.window_manager:
             try:
                 context.window_manager.event_timer_remove(self._timer)
