@@ -31,6 +31,8 @@ assert hasattr(bpy.types.Scene, "autoquad_settings"), "Scene.autoquad_settings n
 settings = bpy.context.scene.autoquad_settings
 assert settings.target_quad_count == 2500, f"Unexpected default target_quad_count: {settings.target_quad_count}"
 assert settings.adaptive_size >= 0.64 and settings.adaptive_size <= 0.66, f"Unexpected default adaptive_size: {settings.adaptive_size}"
+assert hasattr(settings, "preprocess_mesh"), "preprocess_mesh property missing"
+assert settings.preprocess_mesh is False, "preprocess_mesh should be False by default"
 assert settings.hide_original is True, "hide_original should be True by default"
 print("  ✓ Extension successfully registered, default properties verified.")
 

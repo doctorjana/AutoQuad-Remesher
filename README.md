@@ -27,6 +27,7 @@ AutoQuad Remesher provides a clean, single-click interface designed for speed an
 | Adaptive Size: 0.65                      |
 +------------------------------------------+
 | ▼ Advanced Options                       |
+|   [ ] Preprocess Mesh (Make Manifold)    |
 |   [x] Hide Original Mesh                 |
 +------------------------------------------+
 ```
@@ -38,6 +39,7 @@ When you click **Remesh**, a dynamic loading indicator is displayed while the al
 ## Key Features
 
 - **One-Click Remeshing:** Straightforward workflow with just one button and two core sliders: **Target Quads** and **Adaptive Size**.
+- **Preprocess Mesh (Make Manifold):** Integrated 3D-Print Toolbox repair logic to clean up non-manifold elements, remove duplicate vertices, fill holes, delete loose/interior geometry, and fix inverted normals prior to remeshing.
 - **Visual Loading Indicator:** Responsive feedback with progress state and wait cursor while the mesh is processed.
 - **Auto-Hide Original Mesh:** Keeps your viewport clean by automatically hiding the high-poly source mesh upon generation (toggleable under Advanced Options).
 - **Dual-Engine Architecture:**

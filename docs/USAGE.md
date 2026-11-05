@@ -12,7 +12,9 @@ The interface is located in the 3D Viewport Sidebar (**N** key) under the **Auto
 - **Remesh Button:** Executes the remeshing pipeline. While processing, the button changes to a loading indicator (`Remeshing in progress...`) with a wait cursor, returning to normal once finished.
 - **Target Quads:** Sets the target quad count (range: 50 to 100,000, default: `2500`).
 - **Adaptive Size:** Curvature adaptation factor ($0.0$ to $1.0$, default: `0.65`). Higher values allocate more polygons to high-curvature areas (bevels, tight corners) while preserving larger quads on flat areas.
-- **Advanced Options > Hide Original Mesh (Enabled by default):** Automatically hides the original high-poly source mesh upon generation so that only the new, clean quad mesh remains visible in the viewport.
+- **Advanced Options:**
+  - **Preprocess Mesh (Make Manifold):** When checked, executes the 3D-Print Toolbox (`print3d_toolbox`) manifold repair logic on a temporary duplicate before remeshing. This cleans loose geometry, removes interior faces, merges overlapping vertices, dissolves degenerate elements, fills open holes, and recalculates outward-facing normals to ensure a watertight input.
+  - **Hide Original Mesh (Enabled by default):** Automatically hides the original high-poly source mesh upon generation so that only the new, clean quad mesh remains visible in the viewport.
 
 ---
 

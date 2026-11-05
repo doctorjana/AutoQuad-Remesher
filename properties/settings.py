@@ -42,6 +42,12 @@ class AutoQuadSettings(PropertyGroup):
         default=False
     )
     
+    preprocess_mesh: BoolProperty(
+        name="Preprocess Mesh",
+        description="Clean and repair non-manifold geometry before remeshing using 3D Print Toolbox Make Manifold logic",
+        default=False
+    )
+    
     hide_original: BoolProperty(
         name="Hide Original Mesh",
         description="Hide the source mesh object automatically after remeshing is generated",

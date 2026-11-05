@@ -139,6 +139,49 @@ assert fb_pct >= 65.0, f"Fallback solver quad percentage lower than baseline: {f
 src_bm.free()
 quad_bm.free()
 
+# -------------------------------------------------------------
+# Test 4: Preprocess Mesh (3D Print Toolbox Make Manifold Repair)
+# -------------------------------------------------------------
+print("\n[TEST 4] Testing Preprocess Mesh (3D-Print Make Manifold repair)...")
+bpy.ops.wm.read_factory_settings(use_empty=True)
+bpy.ops.mesh.primitive_cube_add()
+flawed_cube = bpy.context.active_object
+flawed_cube.name = "Flawed_Mesh"
+
+# Create non-manifold defect: delete face to create boundary hole, add loose vertex
+bpy.ops.object.mode_set(mode='EDIT')
+bm = bmesh.from_edit_mesh(flawed_cube.data)
+bm.faces.ensure_lookup_table()
+bm.faces.remove(bm.faces[0])
+bm.verts.new((2.5, 2.5, 2.5))
+bmesh.update_edit_mesh(flawed_cube.data)
+bpy.ops.object.mode_set(mode='OBJECT')
+
+settings = bpy.context.scene.autoquad_settings
+settings.target_quad_count = 600
+settings.preprocess_mesh = True
+settings.hide_original = True
+
+t0 = time.perf_counter()
+res = bpy.ops.view3d.autoquad_remesh()
+dt = time.perf_counter() - t0
+assert 'FINISHED' in res, f"Operator failed with preprocess_mesh: {res}"
+
+out_obj = bpy.context.active_object
+assert out_obj.name == "Flawed_Mesh_AutoQuad", f"Unexpected name: {out_obj.name}"
+
+bm_check = bmesh.new()
+bm_check.from_mesh(out_obj.data)
+is_manifold = all(e.is_manifold for e in bm_check.edges)
+out_quads = sum(1 for f in bm_check.faces if len(f.verts) == 4)
+total_f = len(bm_check.faces)
+bm_check.free()
+
+print(f"  ✓ Preprocessed Output: {total_f} faces, {out_quads} quads, is_manifold: {is_manifold} in {dt:.4f}s")
+assert is_manifold is True, "Output mesh was expected to be manifold after preprocessing"
+assert out_quads > 0, "Output mesh has 0 quads"
+assert flawed_cube.hide_get() is True, "Source object should be hidden"
+
 print("\n" + "=" * 60)
 print("ALL REGRESSION AND FUNCTIONAL TESTS PASSED SUCCESSFULLY!")
 print("=" * 60)

@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed in-viewport overlays and interactive overlay toggles.
 
 ### Added
+- **Preprocess Mesh (Make Manifold):** Integrated the official Make Manifold repair algorithm from Blender's 3D-Print Toolbox (`object_print3d_utils`) under Advanced Options. Automatically deletes loose/interior elements, merges duplicate vertices, dissolves degenerate elements, fills boundary holes, and ensures consistent outward normals before remeshing.
 - **Visual Loading Indicator:** When **Remesh** is clicked, a dynamic loading state (`Remeshing in progress...` with icon and wait cursor) is shown and clears automatically once the mesh generation completes.
 - **Hide Original Mesh:** Added an option under Advanced Options (enabled by default) that automatically hides the source object upon successful remeshing.
 

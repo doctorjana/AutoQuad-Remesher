@@ -76,6 +76,7 @@ class VIEW3D_PT_autoquad_main(Panel):
         )
         if settings.show_advanced:
             inner_col = adv_box.column()
+            inner_col.prop(settings, "preprocess_mesh")
             inner_col.prop(settings, "hide_original")
 
 # Backward-compatibility alias
