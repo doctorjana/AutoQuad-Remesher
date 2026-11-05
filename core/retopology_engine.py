@@ -85,6 +85,28 @@ def run_retopology(context, source_obj, settings, src_bvh=None):
                 # Pre-clean geometry
                 clean_bm = bmesh.new()
                 clean_bm.from_mesh(temp_obj.data)
+                
+                # Remove duplicate faces and interior multi-face edges
+                seen = {}
+                dup_faces = []
+                for f in clean_bm.faces:
+                    key = frozenset(v.index for v in f.verts)
+                    if key in seen:
+                        dup_faces.append(f)
+                    else:
+                        seen[key] = f
+                if dup_faces:
+                    bmesh.ops.delete(clean_bm, geom=dup_faces, context='FACES')
+                    
+                clean_bm.edges.ensure_lookup_table()
+                interior_faces = set()
+                for e in clean_bm.edges:
+                    if len(e.link_faces) > 2:
+                        for f in e.link_faces[2:]:
+                            interior_faces.add(f)
+                if interior_faces:
+                    bmesh.ops.delete(clean_bm, geom=list(interior_faces), context='FACES')
+                    
                 bmesh.ops.remove_doubles(clean_bm, verts=clean_bm.verts[:], dist=1e-5)
                 bmesh.ops.dissolve_degenerate(clean_bm, dist=1e-5, edges=clean_bm.edges[:])
                 bmesh.ops.recalc_face_normals(clean_bm, faces=clean_bm.faces[:])
@@ -124,6 +146,11 @@ def run_retopology(context, source_obj, settings, src_bvh=None):
             if quad_bm:
                 quad_bm.free()
                 quad_bm = None
+                
+            poly_count = len(temp_obj.data.polygons)
+            if poly_count > 10000:
+                print(f"[AutoQuad] Notice: Native solver was unable to process high-poly mesh ({poly_count:,} polygons). Aborting pure Python fallback to prevent system freeze.")
+                return None
                 
             src_bm_local = bmesh.new()
             src_bm_local.from_mesh(temp_obj.data)

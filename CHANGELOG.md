@@ -5,6 +5,15 @@ All notable changes to the AutoQuad Remesher extension are documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-11-05
+
+### Fixed
+- **Duplicate Faces & Multi-Face Non-Manifold Edges on Dense Meshes:** Fixed an issue where hole filling and triangulation on high-vertex-count meshes created overlapping duplicate faces (causing edges to have 3 or 4 faces). This previously caused QuadriFlow to cancel with `The mesh needs to be manifold and have face normals that point in a consistent direction`, triggering an unintended slow Python fallback. Added automated post-hole duplicate face and interior multi-face edge pruning.
+- **High-Valence Singularities on Dense Hole Loops:** Dense holes (>16 boundary vertices) are now triangulated with high-regularity beauty triangulation instead of high-valence 100-spoke center pokes that caused QuadriFlow field singularities and spiraling.
+- **Arbitrary Mesh & Offset Origin Inflation:** Fixed sagitta curvature inflation in `make_manifold` so it uses local boundary centroids and average boundary radii instead of projecting toward the global origin `(0, 0, 0)`, preventing distortions on off-center or non-spherical sculpts.
+- **Surface Relaxation Normal Alignment Guard:** In `SurfaceRelaxationEngine`, added a surface normal alignment check (`vert.normal.dot(normal) > 0.05`) during BVH snapping. Prevents vertices on high-density meshes from snapping across thin walls to back-facing surfaces (e.g. ears, eyelids, lips, clothing folds).
+- **Pre-Remesh Geometry Sanitizer:** Added duplicate face and non-manifold multi-face edge stripping in the core retopology engine prior to invoking QuadriFlow, guaranteeing that dense sculpts remesh in seconds.
+
 ## [1.2.0] - 2026-11-05
 
 ### Fixed

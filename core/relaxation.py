@@ -68,11 +68,8 @@ class SurfaceRelaxationEngine:
                 centroid = sum((n.co for n in neighbors), Vector((0, 0, 0))) / len(neighbors)
                 disp = centroid - vert.co
                 
-                vert_normal = Vector((0, 0, 0))
-                for face in vert.link_faces:
-                    vert_normal += face.normal
+                vert_normal = vert.normal
                 if vert_normal.length > 1e-6:
-                    vert_normal.normalize()
                     tangent_disp = disp - vert_normal * disp.dot(vert_normal)
                 else:
                     tangent_disp = disp
@@ -115,21 +112,21 @@ class SurfaceRelaxationEngine:
         # Pass 4: High-Poly BVH Surface Reprojection
         for vert in self.target_bm.verts:
             p = new_positions[vert]
-            if self.lock_symmetry and abs(p[self.axis_idx]) < 1e-4:
-                p[self.axis_idx] = 0.0
-                location, normal, _, _ = self.reference_bvh.find_nearest(p)
-                if location:
+            location, normal, _, _ = self.reference_bvh.find_nearest(p)
+            if location and normal:
+                # Normal alignment guard: prevent snapping through thin walls (ears, eyelids, lips, clothing)
+                if vert.normal.dot(normal) > 0.05:
                     final_co = p.lerp(location, normal_snap_weight)
-                    final_co[self.axis_idx] = 0.0
                 else:
                     final_co = p
+            elif location:
+                final_co = p.lerp(location, normal_snap_weight)
             else:
-                location, normal, _, _ = self.reference_bvh.find_nearest(p)
-                if location:
-                    final_co = p.lerp(location, normal_snap_weight)
-                else:
-                    final_co = p
-                    
+                final_co = p
+                
+            if self.lock_symmetry and abs(p[self.axis_idx]) < 1e-4:
+                final_co[self.axis_idx] = 0.0
+                
             vert.co = final_co
             
         self.target_bm.verts.ensure_lookup_table()
