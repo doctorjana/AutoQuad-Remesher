@@ -60,7 +60,13 @@ class VIEW3D_PT_autoquad_main(Panel):
         
         # Clean Core Settings
         col = layout.column(align=True)
-        col.prop(settings, "target_quad_count")
+        col.prop(settings, "auto_target_quads", text="Optimal Quads (Auto)")
+        if not settings.auto_target_quads:
+            col.prop(settings, "target_quad_count")
+        else:
+            row = col.row(align=True)
+            row.enabled = False
+            row.prop(settings, "target_quad_count", text="Optimal Target (Auto)")
         col.prop(settings, "adaptive_size")
         
         # Advanced Options Collapsible Box

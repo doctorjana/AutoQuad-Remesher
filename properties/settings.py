@@ -14,10 +14,27 @@ from bpy.props import (
     StringProperty
 )
 
+def _update_auto_quads(self, context):
+    if self.auto_target_quads and context and hasattr(context, "active_object"):
+        obj = context.active_object
+        if obj and obj.type == 'MESH':
+            try:
+                from ..core.adaptive_density import calculate_optimal_quad_count
+                self.target_quad_count = calculate_optimal_quad_count(obj)
+            except Exception:
+                pass
+
 class AutoQuadSettings(PropertyGroup):
     """Configuration parameters for AutoQuad Remesher operations."""
     
     # Primary user controls
+    auto_target_quads: BoolProperty(
+        name="Optimal Quads (Auto)",
+        description="Automatically compute feature-preserving optimal quad count without manual input",
+        default=False,
+        update=_update_auto_quads
+    )
+    
     target_quad_count: IntProperty(
         name="Target Quads",
         description="Target quad polygon count for the remeshed geometry",

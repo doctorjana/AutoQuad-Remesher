@@ -170,6 +170,14 @@ def run_retopology(context, source_obj, settings, src_bvh=None):
         temp_obj.matrix_world = source_obj.matrix_world.copy()
         context.collection.objects.link(temp_obj)
         
+        # If auto target quads is enabled, compute optimal count for source object
+        if getattr(settings, "auto_target_quads", False):
+            try:
+                from .adaptive_density import calculate_optimal_quad_count
+                settings.target_quad_count = calculate_optimal_quad_count(source_obj)
+            except Exception:
+                pass
+        
         bpy.ops.object.select_all(action='DESELECT')
         temp_obj.select_set(True)
         context.view_layer.objects.active = temp_obj

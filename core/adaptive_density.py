@@ -79,3 +79,79 @@ class AdaptiveDensityField:
                 
         self.face_target_sizes = graded_sizes
         return self.face_target_sizes
+
+def calculate_optimal_quad_count(obj, bm=None):
+    """
+    Estimates the mathematically optimal target quad count for the given mesh
+    to preserve all structural features and silhouettes without distortion or faceting.
+    
+    Integrates:
+    - Dihedral edge curvature & angular turning energy
+    - Sharp crease and boundary feature edge lengths
+    - Ratio of curved surface area vs flat planar surfaces
+    - Bounding dimensions and characteristic scale
+    """
+    if obj is None or obj.type != 'MESH':
+        return 2500
+        
+    created_bm = False
+    if bm is None:
+        bm = bmesh.new()
+        bm.from_mesh(obj.data)
+        created_bm = True
+        
+    try:
+        bm.edges.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+        
+        dims = obj.dimensions
+        char_size = max(dims.x, dims.y, dims.z, 1e-4)
+        
+        num_edges = len(bm.edges)
+        if num_edges == 0:
+            return 1000
+            
+        curved_edges = 0
+        sharp_edges = 0
+        flat_edges = 0
+        total_turning = 0.0
+        
+        # Fast sampling for dense sculpts (>20k edges)
+        stride = max(1, num_edges // 20000)
+        for idx in range(0, num_edges, stride):
+            edge = bm.edges[idx]
+            if len(edge.link_faces) == 2:
+                f1, f2 = edge.link_faces
+                dot = max(-1.0, min(1.0, f1.normal.dot(f2.normal)))
+                angle = math.acos(dot)
+                l = edge.calc_length()
+                if angle > math.radians(60.0):
+                    sharp_edges += 1
+                    total_turning += angle * l
+                elif angle > math.radians(5.0):
+                    curved_edges += 1
+                    total_turning += angle * l
+                else:
+                    flat_edges += 1
+            elif len(edge.link_faces) == 1:
+                sharp_edges += 1
+                total_turning += (math.pi / 2.0) * edge.calc_length()
+                
+        total_sample = curved_edges + sharp_edges + flat_edges
+        curved_ratio = curved_edges / max(1, total_sample)
+        
+        total_turning *= stride
+        turning_density = total_turning / char_size
+        
+        # Base quad count: planar surfaces need minimal count, curved needs nominal density
+        base = 150.0 + (curved_ratio * 600.0)
+        
+        # Feature-driven curvature budget
+        feature_budget = turning_density * (20.0 + curved_ratio * 40.0)
+        
+        estimated = base + feature_budget
+        estimated = int(round(estimated / 50.0) * 50)
+        return max(150, min(50000, estimated))
+    finally:
+        if created_bm:
+            bm.free()

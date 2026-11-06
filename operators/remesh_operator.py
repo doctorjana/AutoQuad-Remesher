@@ -89,6 +89,15 @@ class VIEW3D_OT_autoquad_remesh(bpy.types.Operator):
             self._cleanup_loading(context)
             return {'CANCELLED'}
             
+        if getattr(settings, "auto_target_quads", False):
+            try:
+                from ..core.adaptive_density import calculate_optimal_quad_count
+                opt = calculate_optimal_quad_count(obj)
+                settings.target_quad_count = opt
+                self.report({'INFO'}, f"AutoQuad: Auto-detected optimal feature budget: {opt:,} quads")
+            except Exception:
+                pass
+                
         src_bm = bmesh.new()
         src_bm.from_mesh(obj.data)
         src_bm.transform(obj.matrix_world)

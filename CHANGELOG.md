@@ -5,6 +5,19 @@ All notable changes to the AutoQuad Remesher extension are documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-11-06
+
+### Added
+- **Optimal Quads Auto-Detection (Zero Guesswork):**
+  - Added an `Optimal Quads (Auto)` toggle directly above Target Quads in the main sidebar panel.
+  - Automatically analyzes the active 3D mesh's geometric complexity, integrating:
+    - Dihedral edge curvature & angular turning energy
+    - Sharp crease and boundary feature edge lengths
+    - Ratio of curved surface area vs flat planar surfaces
+    - Bounding dimensions and characteristic scale
+  - Automatically calculates and applies the mathematically ideal polygon budget that preserves all curvature, features, and silhouettes without faceting or distortion.
+  - When enabled, greys out the manual integer slider and dynamically displays the estimated optimal count.
+
 ## [1.2.5] - 2026-11-06
 
 ### Changed

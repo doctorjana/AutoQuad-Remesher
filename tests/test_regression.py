@@ -253,6 +253,36 @@ print(f"  ✓ Source mesh preserved untouched: {len(sub_cube.data.polygons):,} f
 assert total_dec_f > 0, "Decimated remeshing produced 0 faces"
 assert dec_quads >= int(total_dec_f * 0.95), "Decimated output quad percentage lower than 95%"
 
+# -------------------------------------------------------------
+# Test 7: Optimal Quads Auto-Detection (Zero Guesswork)
+# -------------------------------------------------------------
+print("\n[TEST 7] Testing Optimal Quads Auto-Detection (Zero Guesswork)...")
+bpy.ops.wm.read_factory_settings(use_empty=True)
+bpy.ops.mesh.primitive_monkey_add()
+test_monkey = bpy.context.active_object
+test_monkey.name = "Monkey_Auto_Target"
+
+settings = bpy.context.scene.autoquad_settings
+settings.auto_target_quads = True
+settings.use_decimate = False
+settings.preprocess_mesh = False
+settings.hide_original = False
+
+t0 = time.perf_counter()
+res = bpy.ops.view3d.autoquad_remesh()
+dt = time.perf_counter() - t0
+assert 'FINISHED' in res, f"Operator failed with auto_target_quads: {res}"
+
+auto_out = bpy.context.active_object
+assert auto_out.name == "Monkey_Auto_Target_AutoQuad", f"Unexpected name: {auto_out.name}"
+auto_quads = sum(1 for f in auto_out.data.polygons if len(f.vertices) == 4)
+total_auto_f = len(auto_out.data.polygons)
+print(f"  ✓ Optimal Quads Detected: {settings.target_quad_count:,} target")
+print(f"  ✓ Generated Mesh: {total_auto_f:,} faces, {auto_quads:,} quads ({auto_quads/max(1,total_auto_f)*100:.1f}%) in {dt:.4f}s")
+assert total_auto_f > 0, "Auto-targeted remeshing produced 0 faces"
+assert auto_quads >= int(total_auto_f * 0.95), "Auto-targeted output quad percentage lower than 95%"
+assert 1500 <= total_auto_f <= 4500, f"Auto-detected quad count out of expected range for monkey: {total_auto_f}"
+
 print("\n" + "=" * 60)
 print("ALL REGRESSION AND FUNCTIONAL TESTS PASSED SUCCESSFULLY!")
 print("=" * 60)
