@@ -394,6 +394,7 @@ def run_retopology(context, source_obj, settings, src_bvh=None, progress_cb=None
     # Read source mesh into BMesh safely
     src_bm = bmesh.new()
     src_bm.from_mesh(source_obj.data)
+    sanitize_working_mesh(src_bm, merge_dist=1e-7)
     src_bm.faces.ensure_lookup_table()
     src_bm.verts.ensure_lookup_table()
     
@@ -490,7 +491,12 @@ def run_retopology(context, source_obj, settings, src_bvh=None, progress_cb=None
                         v_map[v] = part_bm.verts.new(v.co)
             part_bm.verts.ensure_lookup_table()
             for f in comp_faces:
-                part_bm.faces.new([v_map[v] for v in f.verts])
+                verts = [v_map[v] for v in f.verts]
+                if len(set(verts)) >= 3:
+                    try:
+                        part_bm.faces.new(verts)
+                    except ValueError:
+                        pass
             budgets.append(calculate_optimal_quad_count(None, bm=part_bm))
             part_bm.free()
     else:
@@ -515,7 +521,12 @@ def run_retopology(context, source_obj, settings, src_bvh=None, progress_cb=None
                         v_map[v] = comp_bm.verts.new(v.co)
             comp_bm.verts.ensure_lookup_table()
             for f in comp_faces:
-                comp_bm.faces.new([v_map[v] for v in f.verts])
+                verts = [v_map[v] for v in f.verts]
+                if len(set(verts)) >= 3:
+                    try:
+                        comp_bm.faces.new(verts)
+                    except ValueError:
+                        pass
             comp_bm.normal_update()
             
             worker_mesh = bpy.data.meshes.new(f"{source_obj.name}_Worker_{idx}")
@@ -579,7 +590,12 @@ def run_retopology(context, source_obj, settings, src_bvh=None, progress_cb=None
                     v_map[v] = final_bm.verts.new(v.co)
                 final_bm.verts.ensure_lookup_table()
                 for f in qbm.faces:
-                    final_bm.faces.new([v_map[v] for v in f.verts])
+                    verts = [v_map[v] for v in f.verts]
+                    if len(set(verts)) >= 3:
+                        try:
+                            final_bm.faces.new(verts)
+                        except ValueError:
+                            pass
                 qbm.free()
                 
             final_bm.verts.ensure_lookup_table()

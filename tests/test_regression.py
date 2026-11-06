@@ -388,6 +388,45 @@ assert ratio >= 90.0, f"Quad ratio below 90%: {ratio:.1f}%"
 test9_mesh_names = [o.name for o in bpy.data.objects if o.type == 'MESH']
 assert set(test9_mesh_names) == {"Multi_Auto_Optimal", "Multi_Auto_Optimal_AutoQuad"}, f"Dangling split parts detected: {test9_mesh_names}"
 
+# -------------------------------------------------------------
+# Test 10: Mesh with Duplicate / Overlapping Faces (No face already exists)
+# -------------------------------------------------------------
+print("\n[TEST 10] Testing Mesh with Duplicate / Overlapping Faces...")
+bpy.ops.wm.read_factory_settings(use_empty=True)
+bpy.ops.mesh.primitive_cube_add()
+dup_obj = bpy.context.active_object
+dup_obj.name = "Duplicate_Faces_Mesh"
+
+# Add duplicate faces directly to the mesh
+bm_dup = bmesh.new()
+bm_dup.from_mesh(dup_obj.data)
+bm_dup.verts.ensure_lookup_table()
+bm_dup.faces.ensure_lookup_table()
+# Create another cube offset slightly sharing the same object
+bmesh.ops.create_cube(bm_dup, size=1.5, matrix=bpy.context.active_object.matrix_world)
+bm_dup.to_mesh(dup_obj.data)
+bm_dup.free()
+dup_obj.data.update()
+
+settings = bpy.context.scene.autoquad_settings
+settings.target_quad_count = 600
+settings.separate_loose_parts = True
+settings.auto_target_quads = False
+settings.hide_original = False
+
+t0 = time.perf_counter()
+res = bpy.ops.view3d.autoquad_remesh()
+dt = time.perf_counter() - t0
+assert 'FINISHED' in res, f"Operator failed on duplicate faces mesh: {res}"
+
+dup_out = bpy.context.active_object
+assert dup_out.name == "Duplicate_Faces_Mesh_AutoQuad"
+total_dup_f = len(dup_out.data.polygons)
+dup_quads = sum(1 for f in dup_out.data.polygons if len(f.vertices) == 4)
+print(f"  ✓ Duplicate Faces Remesh Output: {total_dup_f:,} faces, {dup_quads:,} quads in {dt:.4f}s")
+assert total_dup_f > 0, "Duplicate faces remeshing produced 0 faces"
+assert dup_quads >= int(total_dup_f * 0.90), "Quad ratio below 90%"
+
 print("\n" + "=" * 60)
 print("ALL REGRESSION AND FUNCTIONAL TESTS PASSED SUCCESSFULLY!")
 print("=" * 60)
