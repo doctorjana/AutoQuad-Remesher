@@ -89,13 +89,6 @@ class VIEW3D_OT_autoquad_remesh(bpy.types.Operator):
             self._cleanup_loading(context)
             return {'CANCELLED'}
             
-        wm = getattr(context, "window_manager", None)
-        if wm and hasattr(wm, "progress_begin"):
-            try:
-                wm.progress_begin(0, 100)
-            except Exception:
-                pass
-                
         src_bm = bmesh.new()
         src_bm.from_mesh(obj.data)
         src_bm.transform(obj.matrix_world)
@@ -103,12 +96,6 @@ class VIEW3D_OT_autoquad_remesh(bpy.types.Operator):
         target_bm = None
         
         try:
-            if wm and hasattr(wm, "progress_update"):
-                try:
-                    wm.progress_update(25)
-                except Exception:
-                    pass
-                    
             target_bm = run_retopology(context, obj, settings, src_bvh)
             if target_bm is None or len(target_bm.faces) == 0:
                 self.report(
@@ -117,12 +104,6 @@ class VIEW3D_OT_autoquad_remesh(bpy.types.Operator):
                     "If your mesh has severe non-manifold tears, try enabling 'Preprocess Mesh' in Advanced Options."
                 )
                 return {'CANCELLED'}
-                
-            if wm and hasattr(wm, "progress_update"):
-                try:
-                    wm.progress_update(75)
-                except Exception:
-                    pass
                     
             new_mesh_data = bpy.data.meshes.new(f"{obj.name}_AutoQuad")
             world_inv = obj.matrix_world.inverted()
@@ -167,11 +148,6 @@ class VIEW3D_OT_autoquad_remesh(bpy.types.Operator):
             self.report({'ERROR'}, f"AutoQuad Error: {e}")
             return {'CANCELLED'}
         finally:
-            if wm and hasattr(wm, "progress_end"):
-                try:
-                    wm.progress_end()
-                except Exception:
-                    pass
             if src_bm is not None:
                 try:
                     src_bm.free()

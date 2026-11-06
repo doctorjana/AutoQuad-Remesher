@@ -5,6 +5,14 @@ All notable changes to the AutoQuad Remesher extension are documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.5] - 2026-11-06
+
+### Changed
+- **Removed Floating Numeric Cursor Progress (`25.00`):**
+  - Removed Blender's legacy `window_manager.progress_update(25)` calls from the remesh operator.
+  - In Blender, `wm.progress_update()` renders an awkward floating numeric value (e.g. `25.00`) directly next to the cursor tip. Because QuadriFlow calculates in a single atomic C++ step, this value remained frozen at `25.00` during the entire remeshing process.
+  - The cursor now remains a clean precision reticle (`'CROSSHAIR'`) without numerical clutter, while progress is indicated natively via the sidebar animated spinner and the bottom status bar (`AutoQuad: Remeshing quad topology in progress...`).
+
 ## [1.2.4] - 2026-11-06
 
 ### Added
