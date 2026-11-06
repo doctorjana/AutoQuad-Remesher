@@ -82,7 +82,7 @@ class AdaptiveDensityField:
         self.face_target_sizes = graded_sizes
         return self.face_target_sizes
 
-def calculate_optimal_quad_count(obj=None, bm=None):
+def calculate_optimal_quad_count(obj=None, bm=None, quality=1.0):
     """
     Estimates the mathematically optimal target quad count for the given mesh
     to preserve all structural features and silhouettes without distortion or faceting.
@@ -92,11 +92,12 @@ def calculate_optimal_quad_count(obj=None, bm=None):
     - Sharp crease and boundary feature edge lengths
     - Ratio of curved surface area vs flat planar surfaces
     - Bounding dimensions and characteristic scale
+    - Quality multiplier factor
     """
     if obj is None and bm is None:
-        return 2500
+        return int(round(2500 * max(0.1, float(quality))))
     if obj is not None and obj.type != 'MESH' and bm is None:
-        return 2500
+        return int(round(2500 * max(0.1, float(quality))))
         
     created_bm = False
     if bm is None:
@@ -163,9 +164,9 @@ def calculate_optimal_quad_count(obj=None, bm=None):
         # Feature-driven curvature budget
         feature_budget = turning_density * (20.0 + curved_ratio * 40.0)
         
-        estimated = base + feature_budget
+        estimated = (base + feature_budget) * max(0.1, float(quality))
         estimated = int(round(estimated / 50.0) * 50)
-        return max(150, min(50000, estimated))
+        return max(150, min(100000, estimated))
     finally:
         if created_bm:
             bm.free()
@@ -225,6 +226,7 @@ def calculate_multi_part_budgets(components, src_bm, settings):
     """
     total_model_area = sum(f.calc_area() for f in src_bm.faces)
     is_auto = getattr(settings, "auto_target_quads", False)
+    quality = max(0.1, float(getattr(settings, "quality", 1.0)))
     
     if is_auto:
         src_bm.edges.ensure_lookup_table()
@@ -253,8 +255,9 @@ def calculate_multi_part_budgets(components, src_bm, settings):
         total_turn *= stride
         turn_density = total_turn / math.sqrt(max(total_model_area, 1e-6))
         c_ratio = c_edges / max(1, c_edges + s_edges + f_edges)
-        target_total = int(round((1200 + c_ratio * 1200 + turn_density * 90) / 100.0) * 100)
-        target_total = max(300, min(60000, target_total))
+        raw_target = (1200 + c_ratio * 1200 + turn_density * 90) * quality
+        target_total = int(round(raw_target / 100.0) * 100)
+        target_total = max(300, min(100000, target_total))
     else:
         target_total = max(100, getattr(settings, "target_quad_count", 2500))
         

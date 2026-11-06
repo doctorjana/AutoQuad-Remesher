@@ -499,6 +499,46 @@ print(f"  ✓ Disparate Multi-Part Output: {total_disp_f:,} faces, {disp_quads:,
 assert total_disp_f > 0, "Disparate remeshing produced 0 faces"
 assert disp_quads >= int(total_disp_f * 0.90), "Quad ratio below 90%"
 
+# -------------------------------------------------------------
+# Test 12: Quality Multiplier on Optimal Quad Count
+# -------------------------------------------------------------
+print("\n[TEST 12] Testing Quality Multiplier on Optimal Quad Count...")
+bpy.ops.wm.read_factory_settings(use_empty=True)
+bpy.ops.mesh.primitive_monkey_add()
+qual_monkey = bpy.context.active_object
+qual_monkey.name = "Quality_Monkey"
+
+from quadflow_retopology.core.adaptive_density import calculate_optimal_quad_count
+
+b_1x = calculate_optimal_quad_count(qual_monkey, quality=1.0)
+b_2x = calculate_optimal_quad_count(qual_monkey, quality=2.0)
+b_half = calculate_optimal_quad_count(qual_monkey, quality=0.5)
+
+print(f"  ✓ Quality 1.0x: {b_1x:,} quads")
+print(f"  ✓ Quality 2.0x: {b_2x:,} quads")
+print(f"  ✓ Quality 0.5x: {b_half:,} quads")
+
+assert abs(b_2x - (b_1x * 2.0)) <= 150, f"Quality 2.0x should double optimal budget: got {b_2x} vs {b_1x * 2}"
+assert abs(b_half - (b_1x * 0.5)) <= 100, f"Quality 0.5x should halve optimal budget: got {b_half} vs {b_1x * 0.5}"
+
+settings = bpy.context.scene.autoquad_settings
+settings.auto_target_quads = True
+settings.quality = 1.5
+settings.separate_loose_parts = True
+settings.hide_original = False
+
+t0 = time.perf_counter()
+res = bpy.ops.view3d.autoquad_remesh()
+dt = time.perf_counter() - t0
+assert 'FINISHED' in res, f"Operator failed on quality test: {res}"
+
+qual_out = bpy.context.active_object
+total_qual_f = len(qual_out.data.polygons)
+qual_quads = sum(1 for f in qual_out.data.polygons if len(f.vertices) == 4)
+print(f"  ✓ Remeshed at Quality 1.5x: {total_qual_f:,} faces, {qual_quads:,} quads in {dt:.4f}s")
+assert total_qual_f > 0, "Quality remeshing produced 0 faces"
+assert qual_quads >= int(total_qual_f * 0.90), "Quad ratio below 90%"
+
 print("\n" + "=" * 60)
 print("ALL REGRESSION AND FUNCTIONAL TESTS PASSED SUCCESSFULLY!")
 print("=" * 60)

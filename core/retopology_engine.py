@@ -454,7 +454,8 @@ def run_retopology(context, source_obj, settings, src_bvh=None, progress_cb=None
         if getattr(settings, "auto_target_quads", False):
             try:
                 from .adaptive_density import calculate_optimal_quad_count
-                settings.target_quad_count = calculate_optimal_quad_count(worker_obj)
+                q = getattr(settings, "quality", 1.0)
+                settings.target_quad_count = calculate_optimal_quad_count(worker_obj, quality=q)
             except Exception:
                 pass
                 

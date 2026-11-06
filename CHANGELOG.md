@@ -5,6 +5,16 @@ All notable changes to the AutoQuad Remesher extension are documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.5] - 2026-11-06
+
+### Added
+- **Optimal Count Quality Multiplier (`Quality`):**
+  - Added a dedicated `Quality` multiplier slider in the sidebar panel directly under `Optimal Quads (Auto)`.
+  - Multiplies the auto-detected optimal quad count (default: `1.0x`, soft range: `0.25x` to `4.0x`, hard range: `0.1x` to `10.0x`).
+  - Seamlessly scales polygon budgets: set `Quality` to `2.0` for 2x denser quads (ideal for high-frequency sculpts/wrinkles) or `0.5` for lightweight real-time / game-ready meshes.
+  - Dynamically updates the displayed optimal target count in real time in the UI as the slider is adjusted.
+  - Fully integrated with multi-part loose parts remeshing: scales both single-mesh and multi-component budgets proportionately across all parts while maintaining relative curvature and scale weighting.
+
 ## [1.3.4] - 2026-11-06
 
 ### Added

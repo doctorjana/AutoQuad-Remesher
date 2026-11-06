@@ -65,6 +65,7 @@ class VIEW3D_PT_autoquad_main(Panel):
         if not settings.auto_target_quads:
             col.prop(settings, "target_quad_count")
         else:
+            col.prop(settings, "quality", text="Quality", slider=True)
             row = col.row(align=True)
             row.enabled = False
             row.prop(settings, "target_quad_count", text="Optimal Target (Auto)")

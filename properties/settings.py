@@ -20,7 +20,8 @@ def _update_auto_quads(self, context):
         if obj and obj.type == 'MESH':
             try:
                 from ..core.adaptive_density import calculate_optimal_quad_count
-                self.target_quad_count = calculate_optimal_quad_count(obj)
+                q = getattr(self, "quality", 1.0)
+                self.target_quad_count = calculate_optimal_quad_count(obj, quality=q)
             except Exception:
                 pass
 
@@ -32,6 +33,19 @@ class AutoQuadSettings(PropertyGroup):
         name="Optimal Quads (Auto)",
         description="Automatically compute feature-preserving optimal quad count without manual input",
         default=False,
+        update=_update_auto_quads
+    )
+    
+    quality: FloatProperty(
+        name="Quality",
+        description="Multiplier for optimal quad count (1.0 = standard optimal, 2.0 = 2x denser quads for higher fidelity)",
+        default=1.0,
+        min=0.1,
+        max=10.0,
+        soft_min=0.25,
+        soft_max=4.0,
+        step=10,
+        precision=2,
         update=_update_auto_quads
     )
     
