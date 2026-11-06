@@ -169,3 +169,124 @@ def calculate_optimal_quad_count(obj=None, bm=None):
     finally:
         if created_bm:
             bm.free()
+
+def calculate_component_curvature_complexity(comp_bm, comp_area):
+    """
+    Calculates the dimensionless curvature complexity factor K for a surface component:
+    - Planar surfaces: K ~ 0.6 - 1.0
+    - Curved surfaces: K ~ 1.5 - 2.5
+    - Sharp / high-turning sculpt features: K ~ 2.5 - 3.5
+    """
+    comp_bm.edges.ensure_lookup_table()
+    num_edges = len(comp_bm.edges)
+    if num_edges == 0:
+        return 1.0
+        
+    curved_edges = 0
+    sharp_edges = 0
+    flat_edges = 0
+    total_turning = 0.0
+    
+    stride = max(1, num_edges // 10000)
+    for idx in range(0, num_edges, stride):
+        edge = comp_bm.edges[idx]
+        if len(edge.link_faces) == 2:
+            f1, f2 = edge.link_faces
+            dot = max(-1.0, min(1.0, f1.normal.dot(f2.normal)))
+            angle = math.acos(dot)
+            l = edge.calc_length()
+            if angle > math.radians(60.0):
+                sharp_edges += 1
+                total_turning += angle * l
+            elif angle > math.radians(5.0):
+                curved_edges += 1
+                total_turning += angle * l
+            else:
+                flat_edges += 1
+        elif len(edge.link_faces) == 1:
+            sharp_edges += 1
+            total_turning += (math.pi / 2.0) * edge.calc_length()
+            
+    total_sample = curved_edges + sharp_edges + flat_edges
+    curved_ratio = curved_edges / max(1, total_sample)
+    total_turning *= stride
+    
+    char_part_size = math.sqrt(max(comp_area, 1e-6))
+    turning_intensity = total_turning / char_part_size
+    
+    complexity = 0.6 + (curved_ratio * 0.4) + min(2.5, turning_intensity * 0.1)
+    return max(0.5, complexity)
+
+def calculate_multi_part_budgets(components, src_bm, settings):
+    """
+    Calculates separate, tailored quad budgets for each partitioned component.
+    Integrates each part's surface area, curvature turning energy, and feature complexity.
+    Returns (budgets, target_total).
+    """
+    total_model_area = sum(f.calc_area() for f in src_bm.faces)
+    is_auto = getattr(settings, "auto_target_quads", False)
+    
+    if is_auto:
+        src_bm.edges.ensure_lookup_table()
+        num_edges = len(src_bm.edges)
+        stride = max(1, num_edges // 20000)
+        c_edges, s_edges, f_edges = 0, 0, 0
+        total_turn = 0.0
+        for idx in range(0, num_edges, stride):
+            e = src_bm.edges[idx]
+            if len(e.link_faces) == 2:
+                f1, f2 = e.link_faces
+                dot = max(-1.0, min(1.0, f1.normal.dot(f2.normal)))
+                ang = math.acos(dot)
+                l = e.calc_length()
+                if ang > math.radians(60.0):
+                    s_edges += 1
+                    total_turn += ang * l
+                elif ang > math.radians(5.0):
+                    c_edges += 1
+                    total_turn += ang * l
+                else:
+                    f_edges += 1
+            elif len(e.link_faces) == 1:
+                s_edges += 1
+                total_turn += (math.pi / 2.0) * e.calc_length()
+        total_turn *= stride
+        turn_density = total_turn / math.sqrt(max(total_model_area, 1e-6))
+        c_ratio = c_edges / max(1, c_edges + s_edges + f_edges)
+        target_total = int(round((1200 + c_ratio * 1200 + turn_density * 90) / 100.0) * 100)
+        target_total = max(300, min(60000, target_total))
+    else:
+        target_total = max(100, getattr(settings, "target_quad_count", 2500))
+        
+    part_weights = []
+    part_complexities = []
+    
+    for comp_faces in components:
+        comp_area = sum(f.calc_area() for f in comp_faces)
+        part_bm = bmesh.new()
+        v_map = {v: part_bm.verts.new(v.co) for f in comp_faces for v in f.verts}
+        part_bm.verts.ensure_lookup_table()
+        for f in comp_faces:
+            verts = [v_map[v] for v in f.verts]
+            if len(set(verts)) >= 3:
+                try:
+                    part_bm.faces.new(verts)
+                except ValueError:
+                    pass
+        k = calculate_component_curvature_complexity(part_bm, comp_area)
+        weight = comp_area * k
+        part_weights.append(weight)
+        part_complexities.append(k)
+        part_bm.free()
+        
+    total_weight = sum(part_weights)
+    if total_weight <= 1e-8:
+        total_weight = 1.0
+        part_weights = [1.0] * len(components)
+        
+    budgets = []
+    for w in part_weights:
+        part_budget = max(60, int(round((target_total * (w / total_weight)) / 25.0) * 25))
+        budgets.append(part_budget)
+        
+    return budgets, target_total

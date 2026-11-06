@@ -5,6 +5,16 @@ All notable changes to the AutoQuad Remesher extension are documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.4] - 2026-11-06
+
+### Added
+- **Per-Part Tailored Optimal Quad Budgets (Surface Area & Curvature Weighting):**
+  - Integrated `calculate_multi_part_budgets()` and `calculate_component_curvature_complexity()` in `core/adaptive_density.py`.
+  - When remeshing meshes partitioned into loose parts, AutoQuad now calculates distinct, geometrically tailored quad budgets for every individual component based on its unique surface area, dihedral turning energy, and feature curvature complexity factor $K$.
+  - Solved the issue where scale-invariance caused small details (e.g. 0.2m rivets, eyes, or buttons) and large surfaces (e.g. 4.0m torso or walls) to receive nearly identical quad budgets.
+  - Tiny/secondary parts now receive appropriate compact budgets (e.g. 60–150 quads) while large/curved components receive higher quad allocations (e.g. 2,000–4,000 quads), maintaining a harmonious, consistent quad edge length across the entire combined model.
+  - Real-time progress updates now explicitly show the separate quad budget for each part: `Remeshing part {i}/{N} ({polys} polys -> {budget} quads)...`.
+
 ## [1.3.3] - 2026-11-06
 
 ### Fixed

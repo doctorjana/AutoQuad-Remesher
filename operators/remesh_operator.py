@@ -89,7 +89,7 @@ class VIEW3D_OT_autoquad_remesh(bpy.types.Operator):
             self._cleanup_loading(context)
             return {'CANCELLED'}
             
-        if getattr(settings, "auto_target_quads", False):
+        if getattr(settings, "auto_target_quads", False) and not getattr(settings, "separate_loose_parts", True):
             try:
                 from ..core.adaptive_density import calculate_optimal_quad_count
                 opt = calculate_optimal_quad_count(obj)

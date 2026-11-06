@@ -476,35 +476,8 @@ def run_retopology(context, source_obj, settings, src_bvh=None, progress_cb=None
     # -------------------------------------------------------------
     # Case B: Multi-Part (Separated by Loose Parts in Memory)
     # -------------------------------------------------------------
-    total_area = sum(f.calc_area() for f in src_bm.faces)
-    target_total = max(100, getattr(settings, "target_quad_count", 2500))
-    budgets = []
-    
-    if getattr(settings, "auto_target_quads", False):
-        from .adaptive_density import calculate_optimal_quad_count
-        for comp_faces in components:
-            part_bm = bmesh.new()
-            v_map = {}
-            for f in comp_faces:
-                for v in f.verts:
-                    if v not in v_map:
-                        v_map[v] = part_bm.verts.new(v.co)
-            part_bm.verts.ensure_lookup_table()
-            for f in comp_faces:
-                verts = [v_map[v] for v in f.verts]
-                if len(set(verts)) >= 3:
-                    try:
-                        part_bm.faces.new(verts)
-                    except ValueError:
-                        pass
-            budgets.append(calculate_optimal_quad_count(None, bm=part_bm))
-            part_bm.free()
-    else:
-        for comp_faces in components:
-            part_area = sum(f.calc_area() for f in comp_faces)
-            ratio = part_area / max(1e-6, total_area)
-            part_budget = max(100, int(target_total * ratio))
-            budgets.append(part_budget)
+    from .adaptive_density import calculate_multi_part_budgets
+    budgets, target_total = calculate_multi_part_budgets(components, src_bm, settings)
             
     remeshed_bms = []
     
@@ -551,9 +524,9 @@ def run_retopology(context, source_obj, settings, src_bvh=None, progress_cb=None
             if progress_cb:
                 progress_cb(part_num, num_parts, worker_obj)
                 
-            status_msg = f"AutoQuad: Remeshing loose part {part_num}/{num_parts} ({len(worker_mesh.polygons):,} polys)..."
+            status_msg = f"AutoQuad: Remeshing loose part {part_num}/{num_parts} ({len(worker_mesh.polygons):,} polys -> {budget:,} quads)..."
             if hasattr(settings, "processing_status"):
-                settings.processing_status = f"Remeshing part {part_num}/{num_parts}..."
+                settings.processing_status = f"Remeshing part {part_num}/{num_parts} ({budget:,} quads)..."
             if hasattr(context, "workspace") and context.workspace:
                 try:
                     context.workspace.status_text_set(status_msg)

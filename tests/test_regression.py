@@ -427,6 +427,78 @@ print(f"  ✓ Duplicate Faces Remesh Output: {total_dup_f:,} faces, {dup_quads:,
 assert total_dup_f > 0, "Duplicate faces remeshing produced 0 faces"
 assert dup_quads >= int(total_dup_f * 0.90), "Quad ratio below 90%"
 
+# -------------------------------------------------------------
+# Test 11: Disparate Multi-Part Optimal Budgets (Distinct Per-Part Allocation)
+# -------------------------------------------------------------
+print("\n[TEST 11] Testing Disparate Multi-Part Optimal Budgets (Distinct Per-Part Allocation)...")
+bpy.ops.wm.read_factory_settings(use_empty=True)
+
+# Part 1: Small high-curvature sphere (radius 0.2, e.g. eyeball/rivet)
+bpy.ops.mesh.primitive_uv_sphere_add(radius=0.2, location=(-2.0, 0.0, 0.0))
+small_part = bpy.context.active_object
+small_part.name = "Small_Sphere"
+
+# Part 2: Large planar block (size 4.0, e.g. torso/wall)
+bpy.ops.mesh.primitive_cube_add(size=4.0, location=(2.0, 0.0, 0.0))
+large_part = bpy.context.active_object
+large_part.name = "Large_Cube"
+
+bpy.ops.object.select_all(action='DESELECT')
+small_part.select_set(True)
+large_part.select_set(True)
+bpy.context.view_layer.objects.active = small_part
+bpy.ops.object.join()
+disparate_multi = bpy.context.active_object
+disparate_multi.name = "Disparate_Multi"
+
+# Directly verify calculate_multi_part_budgets generates distinct budgets
+from quadflow_retopology.core.adaptive_density import calculate_multi_part_budgets
+bm_disp = bmesh.new()
+bm_disp.from_mesh(disparate_multi.data)
+bm_disp.faces.ensure_lookup_table()
+
+# Extract components
+visited = [False] * len(bm_disp.faces)
+components = []
+for s_idx, s_face in enumerate(bm_disp.faces):
+    if visited[s_idx]: continue
+    comp_faces = []
+    queue = [s_face]
+    visited[s_idx] = True
+    while queue:
+        c = queue.pop()
+        comp_faces.append(c)
+        for e in c.edges:
+            for n in e.link_faces:
+                if not visited[n.index]:
+                    visited[n.index] = True
+                    queue.append(n)
+    components.append(comp_faces)
+
+settings = bpy.context.scene.autoquad_settings
+settings.auto_target_quads = True
+settings.separate_loose_parts = True
+
+budgets, total_opt = calculate_multi_part_budgets(components, bm_disp, settings)
+print(f"  ✓ Calculated distinct budgets per part: {budgets} (Total: {total_opt})")
+assert len(budgets) == 2, f"Expected 2 part budgets, got {len(budgets)}"
+assert budgets[0] != budgets[1], f"Parts should receive distinct budgets, but got identical: {budgets}"
+assert budgets[1] > budgets[0] * 3, f"Large block should receive substantially more quads than tiny sphere: {budgets}"
+bm_disp.free()
+
+t0 = time.perf_counter()
+res = bpy.ops.view3d.autoquad_remesh()
+dt = time.perf_counter() - t0
+assert 'FINISHED' in res, f"Operator failed on disparate multi-part: {res}"
+
+disp_out = bpy.context.active_object
+assert disp_out.name == "Disparate_Multi_AutoQuad"
+total_disp_f = len(disp_out.data.polygons)
+disp_quads = sum(1 for f in disp_out.data.polygons if len(f.vertices) == 4)
+print(f"  ✓ Disparate Multi-Part Output: {total_disp_f:,} faces, {disp_quads:,} quads in {dt:.4f}s")
+assert total_disp_f > 0, "Disparate remeshing produced 0 faces"
+assert disp_quads >= int(total_disp_f * 0.90), "Quad ratio below 90%"
+
 print("\n" + "=" * 60)
 print("ALL REGRESSION AND FUNCTIONAL TESTS PASSED SUCCESSFULLY!")
 print("=" * 60)
