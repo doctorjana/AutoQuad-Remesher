@@ -344,6 +344,44 @@ assert total_multi_f > 0, "Multi-part remeshing produced 0 faces"
 assert multi_ratio >= 90.0, f"Multi-part output quad percentage lower than 90%: {multi_ratio:.1f}%"
 assert min_x < -1.0 and max_x > 1.0, f"Output mesh should span both separated components, got X=[{min_x}, {max_x}]"
 
+# -------------------------------------------------------------
+# Test 9: Multi-Part Remesh with Optimal Quads Auto-Detection
+# -------------------------------------------------------------
+print("\n[TEST 9] Testing Multi-Part Remesh with Optimal Quads Auto-Detection...")
+bpy.ops.wm.read_factory_settings(use_empty=True)
+bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, location=(-1.5, 0.0, 0.0))
+sp = bpy.context.active_object
+bpy.ops.mesh.primitive_monkey_add(size=1.5, location=(1.5, 0.0, 0.0))
+mo = bpy.context.active_object
+bpy.ops.object.select_all(action='DESELECT')
+sp.select_set(True)
+mo.select_set(True)
+bpy.context.view_layer.objects.active = sp
+bpy.ops.object.join()
+joined_multi = bpy.context.active_object
+joined_multi.name = "Multi_Auto_Optimal"
+
+settings = bpy.context.scene.autoquad_settings
+settings.auto_target_quads = True
+settings.separate_loose_parts = True
+settings.use_decimate = False
+settings.preprocess_mesh = False
+settings.hide_original = False
+
+t0 = time.perf_counter()
+res = bpy.ops.view3d.autoquad_remesh()
+dt = time.perf_counter() - t0
+assert 'FINISHED' in res, f"Operator failed on multi-part auto target: {res}"
+
+multi_opt_out = bpy.context.active_object
+assert multi_opt_out.name == "Multi_Auto_Optimal_AutoQuad"
+quads_count = sum(1 for f in multi_opt_out.data.polygons if len(f.vertices) == 4)
+total_f = len(multi_opt_out.data.polygons)
+ratio = (quads_count / max(1, total_f)) * 100.0
+print(f"  ✓ Multi-Part Auto Optimal Output: {total_f:,} faces, {quads_count:,} quads ({ratio:.1f}%) in {dt:.4f}s")
+assert total_f > 0, "Multi-part auto optimal remeshing produced 0 faces"
+assert ratio >= 90.0, f"Quad ratio below 90%: {ratio:.1f}%"
+
 print("\n" + "=" * 60)
 print("ALL REGRESSION AND FUNCTIONAL TESTS PASSED SUCCESSFULLY!")
 print("=" * 60)

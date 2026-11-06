@@ -7,6 +7,8 @@ Calculates target edge length sizing across the 3D surface based on:
 """
 
 import math
+import bpy
+import bmesh
 from mathutils import Vector
 
 class AdaptiveDensityField:
