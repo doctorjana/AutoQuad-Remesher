@@ -50,7 +50,8 @@ class VIEW3D_PT_autoquad_main(Panel):
             load_row = load_box.row(align=True)
             load_row.scale_y = 1.6
             load_row.alignment = 'CENTER'
-            load_row.label(text="Remeshing in progress...", icon='PREVIEW_LOADING')
+            status_text = getattr(settings, "processing_status", "Remeshing in progress...")
+            load_row.label(text=status_text, icon='PREVIEW_LOADING')
         else:
             col = layout.column(align=True)
             col.scale_y = 1.5
@@ -96,6 +97,7 @@ class VIEW3D_PT_autoquad_main(Panel):
                 else:
                     dec_box.prop(settings, "decimate_ratio", text="Ratio")
             inner_col.prop(settings, "hide_original")
+            inner_col.prop(settings, "separate_loose_parts")
             inner_col.separator()
             inner_col.operator(
                 "view3d.autoquad_make_manifold",

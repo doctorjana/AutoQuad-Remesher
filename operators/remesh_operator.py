@@ -176,6 +176,8 @@ class VIEW3D_OT_autoquad_remesh(bpy.types.Operator):
             settings = getattr(context.scene, "quadflow_settings", None)
         if settings:
             settings.is_processing = False
+            if hasattr(settings, "processing_status"):
+                settings.processing_status = "Remeshing in progress..."
             
         if hasattr(context, "workspace") and context.workspace:
             try:

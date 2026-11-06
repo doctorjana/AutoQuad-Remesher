@@ -283,6 +283,67 @@ assert total_auto_f > 0, "Auto-targeted remeshing produced 0 faces"
 assert auto_quads >= int(total_auto_f * 0.95), "Auto-targeted output quad percentage lower than 95%"
 assert 1500 <= total_auto_f <= 4500, f"Auto-detected quad count out of expected range for monkey: {total_auto_f}"
 
+# -------------------------------------------------------------
+# Test 8: Remesh by Loose Parts (Connected Components)
+# -------------------------------------------------------------
+print("\n[TEST 8] Testing Remesh by Loose Parts (Multi-component mesh)...")
+bpy.ops.wm.read_factory_settings(use_empty=True)
+# Create part 1: UV sphere at (-2, 0, 0)
+bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, location=(-2.0, 0.0, 0.0))
+p1 = bpy.context.active_object
+p1.name = "Part1_Sphere"
+
+# Create part 2: Cube at (2, 0, 0)
+bpy.ops.mesh.primitive_cube_add(size=1.5, location=(2.0, 0.0, 0.0))
+p2 = bpy.context.active_object
+p2.name = "Part2_Cube"
+
+# Join both disconnected parts into a single object
+bpy.ops.object.select_all(action='DESELECT')
+p1.select_set(True)
+p2.select_set(True)
+bpy.context.view_layer.objects.active = p1
+bpy.ops.object.join()
+multipart_obj = bpy.context.active_object
+multipart_obj.name = "Multipart_Mesh"
+orig_poly_count = len(multipart_obj.data.polygons)
+print(f"  Input multi-part mesh: {orig_poly_count:,} polygons across 2 disconnected islands")
+
+settings = bpy.context.scene.autoquad_settings
+settings.target_quad_count = 1200
+settings.separate_loose_parts = True
+settings.auto_target_quads = False
+settings.use_decimate = False
+settings.preprocess_mesh = False
+settings.hide_original = False
+
+t0 = time.perf_counter()
+res = bpy.ops.view3d.autoquad_remesh()
+dt = time.perf_counter() - t0
+assert 'FINISHED' in res, f"Operator failed with separate_loose_parts: {res}"
+
+multi_out = bpy.context.active_object
+assert multi_out.name == "Multipart_Mesh_AutoQuad", f"Unexpected name: {multi_out.name}"
+assert len(multipart_obj.data.polygons) == orig_poly_count, "Source multipart object was altered!"
+
+multi_quads = sum(1 for f in multi_out.data.polygons if len(f.vertices) == 4)
+total_multi_f = len(multi_out.data.polygons)
+multi_ratio = (multi_quads / max(1, total_multi_f)) * 100.0
+
+# Verify both disconnected parts exist in output in world space
+bm_check = bmesh.new()
+bm_check.from_mesh(multi_out.data)
+world_xs = [(multi_out.matrix_world @ v.co).x for v in bm_check.verts]
+min_x = min(world_xs)
+max_x = max(world_xs)
+bm_check.free()
+
+print(f"  ✓ Multi-Part Remesh Output: {total_multi_f:,} faces, {multi_quads:,} quads ({multi_ratio:.1f}%) in {dt:.4f}s")
+print(f"  ✓ Spatial span across islands: X from {min_x:.2f} to {max_x:.2f}")
+assert total_multi_f > 0, "Multi-part remeshing produced 0 faces"
+assert multi_ratio >= 90.0, f"Multi-part output quad percentage lower than 90%: {multi_ratio:.1f}%"
+assert min_x < -1.0 and max_x > 1.0, f"Output mesh should span both separated components, got X=[{min_x}, {max_x}]"
+
 print("\n" + "=" * 60)
 print("ALL REGRESSION AND FUNCTIONAL TESTS PASSED SUCCESSFULLY!")
 print("=" * 60)

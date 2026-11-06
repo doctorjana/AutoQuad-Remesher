@@ -5,6 +5,26 @@ All notable changes to the AutoQuad Remesher extension are documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-11-06
+
+### Added
+- **Remesh by Loose Parts (Connected Component Partitioning):**
+  - Added a `Remesh by Loose Parts` toggle under Advanced Options (enabled by default).
+  - Internally partitions any input mesh containing multiple disconnected islands / shells into isolated components using Blender's native C++ connected-component algorithm (`face_sets_create(mode='LOOSE_PARTS')` / `mesh.separate(type='LOOSE')`).
+  - Resolves cross-shell topology distortion, mesh entanglement, and snapping errors (e.g., characters with separated eyeballs, teeth, armor plates, clothing layers, or multi-part CAD assemblies).
+  - Remeshes each loose component independently with its own isolated BVH tree, preventing field cross-talk and cross-boundary vertex snapping.
+  - Dynamically calculates polygon budgets per component:
+    - If `Optimal Quads (Auto)` is enabled, calculates the exact curvature-energy budget individually per loose component.
+    - If manual target quads is used, distributes the budget proportionally based on each component's relative surface area.
+  - Automatically joins all cleanly remeshed quad parts back into a single unified object with preserved transforms, world positioning, and smooth shading.
+
+### Changed
+- **Dynamic Step-by-Step Progress & Loading Status:**
+  - Real-time updates during multi-part remeshing:
+    - Status bar displays: `AutoQuad: Remeshing loose part {i}/{N} ({polys} polys)...`
+    - Sidebar animated loading box dynamically shows: `Remeshing part {i}/{N}...`
+  - Clean automatic cleanup of processing state and status bar upon completion or cancellation.
+
 ## [1.3.0] - 2026-11-06
 
 ### Added

@@ -110,11 +110,22 @@ class AutoQuadSettings(PropertyGroup):
         default=True
     )
     
+    separate_loose_parts: BoolProperty(
+        name="Remesh by Loose Parts",
+        description="Internally separate disconnected mesh components and remesh each individually",
+        default=True
+    )
+    
     # Operational state for loading indicator
     is_processing: BoolProperty(
         name="Is Processing",
         description="Active state indicator during remeshing calculation",
         default=False
+    )
+    
+    processing_status: StringProperty(
+        name="Processing Status",
+        default="Remeshing in progress..."
     )
     
     # Internal algorithm defaults (symmetry completely disabled)

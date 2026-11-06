@@ -12,7 +12,7 @@ Coordinates:
 import math
 import bpy
 import bmesh
-from mathutils import Vector
+from mathutils import Vector, Matrix
 from mathutils.bvhtree import BVHTree
 
 from .curvature_field import CurvatureFieldSolver
@@ -93,14 +93,15 @@ def sanitize_working_mesh(bm, merge_dist=1e-4):
     except Exception:
         pass
 
-def _run_quadriflow_op(settings, preserve_boundary=True):
+def _run_quadriflow_op(settings, target_faces=None, preserve_boundary=True):
     """Executes native QuadriFlow remesh operator with safe property mapping."""
     op_props = bpy.ops.object.quadriflow_remesh.get_rna_type().properties.keys()
     kwargs = {}
     if 'mode' in op_props:
         kwargs['mode'] = 'FACES'
     if 'target_faces' in op_props:
-        kwargs['target_faces'] = max(50, settings.target_quad_count)
+        count = target_faces if target_faces is not None else getattr(settings, "target_quad_count", 2500)
+        kwargs['target_faces'] = max(50, count)
     if 'use_mesh_symmetry' in op_props:
         kwargs['use_mesh_symmetry'] = getattr(settings, "use_symmetry", False)
     if 'use_preserve_sharp' in op_props:
@@ -134,213 +135,166 @@ def _condition_dense_mesh(temp_obj, max_faces=65000):
         bpy.ops.object.modifier_apply(modifier='AutoQuad_Decimate')
         temp_obj.data.update()
 
-def run_retopology(context, source_obj, settings, src_bvh=None):
+def run_retopology_single_part(context, temp_obj, settings, target_faces=None, src_bvh=None):
     """
-    Executes the complete AutoQuad retopology pipeline.
-    
-    Parameters:
-        context: Blender context
-        source_obj: Source mesh Object to remesh
-        settings: AutoQuadSettings instance containing algorithm configuration
-        src_bvh: Optional pre-built BVHTree in world space (constructed if None)
-        
-    Returns:
-        bmesh.types.BMesh: A newly allocated BMesh in world coordinates containing
-                           the retopologized regular quad geometry.
-                           Caller is responsible for freeing the bmesh.
+    Executes the complete retopology pipeline on a single manifold/connected working mesh object.
+    Returns a bmesh.types.BMesh in world coordinates containing the regular quad geometry.
     """
     has_native = hasattr(bpy.ops.object, "quadriflow_remesh")
     quad_bm = None
     
-    temp_obj = None
-    temp_mesh = None
+    bpy.ops.object.select_all(action='DESELECT')
+    temp_obj.select_set(True)
+    context.view_layer.objects.active = temp_obj
     
-    try:
-        if context.mode != 'OBJECT':
-            bpy.ops.object.mode_set(mode='OBJECT')
+    # -------------------------------------------------------------
+    # Optional: Make Manifold Preprocessing (3D Print Toolbox Logic)
+    # -------------------------------------------------------------
+    if getattr(settings, "preprocess_mesh", False):
+        fill_holes_opt = getattr(settings, "fill_holes_on_preprocess", False)
+        make_manifold(context, temp_obj, fill_holes=fill_holes_opt, preserve_curvature=True)
+        temp_obj.data.update()
+        
+    # Build reference BVH from working geometry (before decimation to keep full surface resolution)
+    if getattr(settings, "preprocess_mesh", False) or src_bvh is None:
+        src_bm_temp = bmesh.new()
+        src_bm_temp.from_mesh(temp_obj.data)
+        src_bm_temp.transform(temp_obj.matrix_world)
+        src_bvh = BVHTree.FromBMesh(src_bm_temp, epsilon=1e-5)
+        src_bm_temp.free()
+        
+    # -------------------------------------------------------------
+    # Optional: Non-destructive User Decimate Pre-pass
+    # -------------------------------------------------------------
+    if getattr(settings, "use_decimate", False):
+        dmod = temp_obj.modifiers.new('AutoQuad_UserDecimate', 'DECIMATE')
+        d_mode = getattr(settings, "decimate_mode", 'COLLAPSE')
+        ratio_val = getattr(settings, "decimate_ratio", 0.1)
+        
+        if d_mode == 'UNSUBDIV':
+            dmod.decimate_type = 'UNSUBDIV'
+            dmod.iterations = getattr(settings, "decimate_unsubdivide_iterations", 2)
+        else:
+            dmod.decimate_type = 'COLLAPSE'
+            dmod.ratio = ratio_val
             
-        bpy.ops.object.select_all(action='DESELECT')
-        source_obj.select_set(True)
-        context.view_layer.objects.active = source_obj
+        orig_poly_count = len(temp_obj.data.polygons)
+        bpy.ops.object.modifier_apply(modifier='AutoQuad_UserDecimate')
+        temp_obj.data.update()
         
-        # Create non-destructive working duplicate
-        temp_mesh = source_obj.data.copy()
-        temp_mesh.name = f"{source_obj.name}_AutoQuad_Temp"
-        temp_obj = bpy.data.objects.new(f"{source_obj.name}_AutoQuad_Temp", temp_mesh)
-        temp_obj.matrix_world = source_obj.matrix_world.copy()
-        context.collection.objects.link(temp_obj)
+        # If unsubdivide did not reduce face count (e.g. non-grid topology), fallback to collapse
+        if d_mode == 'UNSUBDIV' and len(temp_obj.data.polygons) >= orig_poly_count:
+            dmod_fb = temp_obj.modifiers.new('AutoQuad_UserDecimate_FB', 'DECIMATE')
+            dmod_fb.decimate_type = 'COLLAPSE'
+            dmod_fb.ratio = ratio_val
+            bpy.ops.object.modifier_apply(modifier='AutoQuad_UserDecimate_FB')
+            temp_obj.data.update()
         
-        # If auto target quads is enabled, compute optimal count for source object
-        if getattr(settings, "auto_target_quads", False):
+    # -------------------------------------------------------------
+    # 1. Primary Engine: Native C++ QuadriFlow with Self-Healing Multi-Stage Recovery
+    # -------------------------------------------------------------
+    if has_native:
+        # Stage A: Initial sanitization of working duplicate
+        clean_bm = bmesh.new()
+        clean_bm.from_mesh(temp_obj.data)
+        sanitize_working_mesh(clean_bm, merge_dist=1e-4)
+        clean_bm.to_mesh(temp_obj.data)
+        clean_bm.free()
+        temp_obj.data.update()
+        
+        # Stage B: Auto-condition ultra-dense sculpts (> 70k polygons)
+        initial_polys = len(temp_obj.data.polygons)
+        if initial_polys > 70000:
+            _condition_dense_mesh(temp_obj, max_faces=65000)
+            
+        # Stage C: Multi-pass execution
+        target_count = target_faces if target_faces is not None else getattr(settings, "target_quad_count", 2500)
+        
+        # Pass 1: Standard QuadriFlow with boundary preservation
+        success = _run_quadriflow_op(settings, target_faces=target_count, preserve_boundary=True)
+        
+        # Pass 2: Retry without boundary preservation if Pass 1 failed
+        if not success or len(temp_obj.data.polygons) == 0:
+            success = _run_quadriflow_op(settings, target_faces=target_count, preserve_boundary=False)
+            
+        # Pass 3: Auto-heal manifold defects and retry
+        if not success or len(temp_obj.data.polygons) == 0:
             try:
-                from .adaptive_density import calculate_optimal_quad_count
-                settings.target_quad_count = calculate_optimal_quad_count(source_obj)
-            except Exception:
-                pass
-        
-        bpy.ops.object.select_all(action='DESELECT')
-        temp_obj.select_set(True)
-        context.view_layer.objects.active = temp_obj
-        
-        # -------------------------------------------------------------
-        # Optional: Make Manifold Preprocessing (3D Print Toolbox Logic)
-        # -------------------------------------------------------------
-        if getattr(settings, "preprocess_mesh", False):
-            fill_holes_opt = getattr(settings, "fill_holes_on_preprocess", False)
-            make_manifold(context, temp_obj, fill_holes=fill_holes_opt, preserve_curvature=True)
-            temp_obj.data.update()
-            
-        # Build reference BVH from working geometry (before decimation to keep full surface resolution)
-        if getattr(settings, "preprocess_mesh", False) or src_bvh is None:
-            src_bm_temp = bmesh.new()
-            src_bm_temp.from_mesh(temp_obj.data)
-            src_bm_temp.transform(temp_obj.matrix_world)
-            src_bvh = BVHTree.FromBMesh(src_bm_temp, epsilon=1e-5)
-            src_bm_temp.free()
-            
-        # -------------------------------------------------------------
-        # Optional: Non-destructive User Decimate Pre-pass
-        # -------------------------------------------------------------
-        if getattr(settings, "use_decimate", False):
-            dmod = temp_obj.modifiers.new('AutoQuad_UserDecimate', 'DECIMATE')
-            d_mode = getattr(settings, "decimate_mode", 'COLLAPSE')
-            ratio_val = getattr(settings, "decimate_ratio", 0.1)
-            
-            if d_mode == 'UNSUBDIV':
-                dmod.decimate_type = 'UNSUBDIV'
-                dmod.iterations = getattr(settings, "decimate_unsubdivide_iterations", 2)
-            else:
-                dmod.decimate_type = 'COLLAPSE'
-                dmod.ratio = ratio_val
-                
-            orig_poly_count = len(temp_obj.data.polygons)
-            bpy.ops.object.modifier_apply(modifier='AutoQuad_UserDecimate')
-            temp_obj.data.update()
-            
-            # If unsubdivide did not reduce face count (e.g. non-grid topology), fallback to collapse
-            if d_mode == 'UNSUBDIV' and len(temp_obj.data.polygons) >= orig_poly_count:
-                dmod_fb = temp_obj.modifiers.new('AutoQuad_UserDecimate_FB', 'DECIMATE')
-                dmod_fb.decimate_type = 'COLLAPSE'
-                dmod_fb.ratio = ratio_val
-                bpy.ops.object.modifier_apply(modifier='AutoQuad_UserDecimate_FB')
+                make_manifold(context, temp_obj, fill_holes=False)
                 temp_obj.data.update()
-            
-        # -------------------------------------------------------------
-        # 1. Primary Engine: Native C++ QuadriFlow with Self-Healing Multi-Stage Recovery
-        # -------------------------------------------------------------
-        if has_native:
-            # Stage A: Initial sanitization of working duplicate
-            clean_bm = bmesh.new()
-            clean_bm.from_mesh(temp_obj.data)
-            sanitize_working_mesh(clean_bm, merge_dist=1e-4)
-            clean_bm.to_mesh(temp_obj.data)
-            clean_bm.free()
-            temp_obj.data.update()
-            
-            # Stage B: Auto-condition ultra-dense sculpts (> 70k polygons)
-            # This prevents QuadriFlow memory exhaustion and matrix singularities
-            # on 500k+ poly meshes, while src_bvh preserves 100% of original detail
-            initial_polys = len(temp_obj.data.polygons)
-            if initial_polys > 70000:
-                _condition_dense_mesh(temp_obj, max_faces=65000)
+                success = _run_quadriflow_op(settings, target_faces=target_count, preserve_boundary=False)
+            except Exception as e:
+                print(f"[AutoQuad] Auto-heal pass 3 notice: {e}")
                 
-            # Stage C: Multi-pass execution
-            # Pass 1: Standard QuadriFlow with boundary preservation
-            success = _run_quadriflow_op(settings, preserve_boundary=True)
-            
-            # Pass 2: Retry without boundary preservation if Pass 1 failed
-            if not success or len(temp_obj.data.polygons) == 0:
-                success = _run_quadriflow_op(settings, preserve_boundary=False)
-                
-            # Pass 3: Auto-heal manifold defects and retry
-            if not success or len(temp_obj.data.polygons) == 0:
-                try:
-                    make_manifold(context, temp_obj, fill_holes=False)
-                    temp_obj.data.update()
-                    success = _run_quadriflow_op(settings, preserve_boundary=False)
-                except Exception as e:
-                    print(f"[AutoQuad] Auto-heal pass 3 notice: {e}")
-                    
-            # Pass 4: If still failing and mesh is still dense (> 35k), condition further
-            if (not success or len(temp_obj.data.polygons) == 0) and len(temp_obj.data.polygons) > 35000:
-                try:
-                    _condition_dense_mesh(temp_obj, max_faces=35000)
-                    make_manifold(context, temp_obj, fill_holes=False)
-                    temp_obj.data.update()
-                    success = _run_quadriflow_op(settings, preserve_boundary=False)
-                except Exception as e:
-                    print(f"[AutoQuad] Auto-heal pass 4 notice: {e}")
-                    
-            # Pass 5: Seal open boundary tears and retry as watertight
-            if not success or len(temp_obj.data.polygons) == 0:
-                try:
-                    make_manifold(context, temp_obj, fill_holes=True)
-                    temp_obj.data.update()
-                    success = _run_quadriflow_op(settings, preserve_boundary=False)
-                except Exception as e:
-                    print(f"[AutoQuad] Auto-heal pass 5 notice: {e}")
-
-            if success and len(temp_obj.data.polygons) > 0:
-                quad_bm = bmesh.new()
-                quad_bm.from_mesh(temp_obj.data)
-
-        # -------------------------------------------------------------
-        # 2. Fallback Engine: Topological Patch Solver
-        # -------------------------------------------------------------
-        if quad_bm is None or len(quad_bm.faces) == 0:
-            if quad_bm:
-                quad_bm.free()
-                quad_bm = None
-                
-            poly_count = len(temp_obj.data.polygons)
-            if poly_count > 10000:
-                print(f"[AutoQuad] Notice: Native solver was unable to process high-poly mesh ({poly_count:,} polygons). Aborting pure Python fallback to prevent system freeze.")
-                return None
-                
-            src_bm_local = bmesh.new()
-            src_bm_local.from_mesh(temp_obj.data)
-            src_bm_local.transform(temp_obj.matrix_world)
-            
-            solver = CurvatureFieldSolver(
-                src_bm_local,
-                sharp_angle_threshold=math.radians(getattr(settings, "hard_edge_angle", 45.0)),
-                use_creases=getattr(settings, "use_marked_creases", True)
-            )
-            solver.identify_feature_edges()
-            solver.compute_face_curvatures()
-            cross_fields = solver.solve_4rosy_cross_field(smoothing_iterations=6)
-            
-            density = AdaptiveDensityField(
-                src_bm_local,
-                target_quad_count=settings.target_quad_count,
-                adaptive_factor=settings.adaptive_size
-            )
-            density_sizes = density.evaluate_density_field(solver.face_curvatures)
-            
-            extractor = QuadPatchExtractor(
-                src_bm_local,
-                target_quad_count=settings.target_quad_count,
-                symmetry_axis=getattr(settings, "symmetry_axis", 'X')
-            )
-            quad_bm = extractor.generate_quad_mesh(
-                cross_fields,
-                density_sizes,
-                symmetry=getattr(settings, "use_symmetry", False)
-            )
-            src_bm_local.free()
-
-    finally:
-        # Guaranteed cleanup of working duplicate
-        if temp_obj is not None:
+        # Pass 4: If still failing and mesh is still dense (> 35k), condition further
+        if (not success or len(temp_obj.data.polygons) == 0) and len(temp_obj.data.polygons) > 35000:
             try:
-                bpy.data.objects.remove(temp_obj, do_unlink=True)
-            except Exception:
-                pass
-        if temp_mesh is not None:
+                _condition_dense_mesh(temp_obj, max_faces=35000)
+                make_manifold(context, temp_obj, fill_holes=False)
+                temp_obj.data.update()
+                success = _run_quadriflow_op(settings, target_faces=target_count, preserve_boundary=False)
+            except Exception as e:
+                print(f"[AutoQuad] Auto-heal pass 4 notice: {e}")
+                
+        # Pass 5: Seal open boundary tears and retry as watertight
+        if not success or len(temp_obj.data.polygons) == 0:
             try:
-                bpy.data.meshes.remove(temp_mesh, do_unlink=True)
-            except Exception:
-                pass
+                make_manifold(context, temp_obj, fill_holes=True)
+                temp_obj.data.update()
+                success = _run_quadriflow_op(settings, target_faces=target_count, preserve_boundary=False)
+            except Exception as e:
+                print(f"[AutoQuad] Auto-heal pass 5 notice: {e}")
+
+        if success and len(temp_obj.data.polygons) > 0:
+            quad_bm = bmesh.new()
+            quad_bm.from_mesh(temp_obj.data)
+            quad_bm.transform(temp_obj.matrix_world)
+
+    # -------------------------------------------------------------
+    # 2. Fallback Engine: Topological Patch Solver
+    # -------------------------------------------------------------
+    if quad_bm is None or len(quad_bm.faces) == 0:
+        if quad_bm:
+            quad_bm.free()
+            quad_bm = None
+            
+        poly_count = len(temp_obj.data.polygons)
+        if poly_count > 10000:
+            print(f"[AutoQuad] Notice: Native solver was unable to process high-poly mesh ({poly_count:,} polygons). Aborting pure Python fallback to prevent system freeze.")
+            return None
+            
+        src_bm_local = bmesh.new()
+        src_bm_local.from_mesh(temp_obj.data)
+        src_bm_local.transform(temp_obj.matrix_world)
+        
+        fallback_target = target_faces if target_faces is not None else getattr(settings, "target_quad_count", 2500)
+        solver = CurvatureFieldSolver(
+            src_bm_local,
+            sharp_angle_threshold=math.radians(getattr(settings, "hard_edge_angle", 45.0)),
+            use_creases=getattr(settings, "use_marked_creases", True)
+        )
+        solver.identify_feature_edges()
+        solver.compute_face_curvatures()
+        cross_fields = solver.solve_4rosy_cross_field(smoothing_iterations=6)
+        
+        density = AdaptiveDensityField(
+            src_bm_local,
+            target_quad_count=fallback_target,
+            adaptive_factor=settings.adaptive_size
+        )
+        density_sizes = density.evaluate_density_field(solver.face_curvatures)
+        
+        extractor = QuadPatchExtractor(
+            src_bm_local,
+            target_quad_count=fallback_target,
+            symmetry_axis=getattr(settings, "symmetry_axis", 'X')
+        )
+        quad_bm = extractor.generate_quad_mesh(
+            cross_fields,
+            density_sizes,
+            symmetry=getattr(settings, "use_symmetry", False)
+        )
+        src_bm_local.free()
 
     if quad_bm is None or len(quad_bm.faces) == 0:
         return None
@@ -413,3 +367,171 @@ def run_retopology(context, source_obj, settings, src_bvh=None):
     quad_bm.normal_update()
     
     return quad_bm
+
+def run_retopology(context, source_obj, settings, src_bvh=None, progress_cb=None):
+    """
+    Executes the complete AutoQuad retopology pipeline:
+    1. Internally partitions the mesh into disconnected loose parts (connected components).
+    2. Dynamically allocates target quad budgets per loose component.
+    3. Remeshes each loose component individually while updating visual progress.
+    4. Recombines all remeshed quad components into a unified quad mesh.
+    
+    Parameters:
+        context: Blender context
+        source_obj: Source mesh Object to remesh
+        settings: AutoQuadSettings instance containing algorithm configuration
+        src_bvh: Optional pre-built BVHTree in world space (constructed if None)
+        progress_cb: Optional callback function progress_cb(current_part, total_parts, part_obj)
+        
+    Returns:
+        bmesh.types.BMesh: A newly allocated BMesh in world coordinates containing
+                           the retopologized regular quad geometry.
+                           Caller is responsible for freeing the bmesh.
+    """
+    if context.mode != 'OBJECT':
+        bpy.ops.object.mode_set(mode='OBJECT')
+        
+    bpy.ops.object.select_all(action='DESELECT')
+    source_obj.select_set(True)
+    context.view_layer.objects.active = source_obj
+    
+    # Create non-destructive working duplicate
+    temp_mesh = source_obj.data.copy()
+    temp_mesh.name = f"{source_obj.name}_AutoQuad_Temp"
+    temp_obj = bpy.data.objects.new(f"{source_obj.name}_AutoQuad_Temp", temp_mesh)
+    temp_obj.matrix_world = source_obj.matrix_world.copy()
+    context.collection.objects.link(temp_obj)
+    
+    bpy.ops.object.select_all(action='DESELECT')
+    temp_obj.select_set(True)
+    context.view_layer.objects.active = temp_obj
+    
+    # Pre-clean duplicate to remove wire edges and loose vertices before loose parts separation
+    clean_bm = bmesh.new()
+    clean_bm.from_mesh(temp_obj.data)
+    sanitize_working_mesh(clean_bm, merge_dist=1e-4)
+    clean_bm.to_mesh(temp_obj.data)
+    clean_bm.free()
+    temp_obj.data.update()
+    
+    part_objs = [temp_obj]
+    if getattr(settings, "separate_loose_parts", True):
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_all(action='SELECT')
+        bpy.ops.mesh.separate(type='LOOSE')
+        bpy.ops.object.mode_set(mode='OBJECT')
+        part_objs = list(context.selected_objects)
+        
+    num_parts = len(part_objs)
+    
+    # -------------------------------------------------------------
+    # Case A: Single Part
+    # -------------------------------------------------------------
+    if num_parts <= 1:
+        single_obj = part_objs[0]
+        if progress_cb:
+            progress_cb(1, 1, single_obj)
+        if getattr(settings, "auto_target_quads", False):
+            try:
+                from .adaptive_density import calculate_optimal_quad_count
+                settings.target_quad_count = calculate_optimal_quad_count(single_obj)
+            except Exception:
+                pass
+                
+        try:
+            quad_bm = run_retopology_single_part(
+                context, single_obj, settings,
+                target_faces=settings.target_quad_count,
+                src_bvh=src_bvh
+            )
+            return quad_bm
+        finally:
+            try:
+                m = single_obj.data
+                bpy.data.objects.remove(single_obj, do_unlink=True)
+                bpy.data.meshes.remove(m, do_unlink=True)
+            except Exception:
+                pass
+
+    # -------------------------------------------------------------
+    # Case B: Multi-Part (Separated by Loose Parts)
+    # -------------------------------------------------------------
+    budgets = []
+    if getattr(settings, "auto_target_quads", False):
+        from .adaptive_density import calculate_optimal_quad_count
+        for p in part_objs:
+            budgets.append(calculate_optimal_quad_count(p))
+    else:
+        total_p_area = sum(sum(getattr(f, "area", 1.0) for f in p.data.polygons) for p in part_objs)
+        target_total = max(100, getattr(settings, "target_quad_count", 2500))
+        for p in part_objs:
+            p_area = sum(getattr(f, "area", 1.0) for f in p.data.polygons)
+            ratio = p_area / max(1e-6, total_p_area)
+            part_budget = max(60, int(target_total * ratio))
+            budgets.append(part_budget)
+            
+    remeshed_part_objs = []
+    
+    try:
+        for idx, (part_obj, budget) in enumerate(zip(part_objs, budgets)):
+            part_num = idx + 1
+            if progress_cb:
+                progress_cb(part_num, num_parts, part_obj)
+                
+            status_msg = f"AutoQuad: Remeshing loose part {part_num}/{num_parts} ({len(part_obj.data.polygons):,} polys)..."
+            if hasattr(settings, "processing_status"):
+                settings.processing_status = f"Remeshing part {part_num}/{num_parts}..."
+            if hasattr(context, "workspace") and context.workspace:
+                try:
+                    context.workspace.status_text_set(status_msg)
+                except Exception:
+                    pass
+            if hasattr(context, "area") and context.area:
+                try:
+                    context.area.tag_redraw()
+                except Exception:
+                    pass
+                    
+            part_bm = run_retopology_single_part(
+                context, part_obj, settings,
+                target_faces=budget,
+                src_bvh=None
+            )
+            
+            if part_bm and len(part_bm.faces) > 0:
+                part_obj.matrix_world = Matrix.Identity(4)
+                part_obj.data.clear_geometry()
+                part_bm.to_mesh(part_obj.data)
+                part_obj.data.update()
+                part_bm.free()
+                remeshed_part_objs.append(part_obj)
+            else:
+                remeshed_part_objs.append(part_obj)
+                
+        # Join all remeshed parts back into a single unified mesh object
+        if remeshed_part_objs:
+            bpy.ops.object.select_all(action='DESELECT')
+            for p in remeshed_part_objs:
+                p.select_set(True)
+            context.view_layer.objects.active = remeshed_part_objs[0]
+            bpy.ops.object.join()
+            
+            combined_obj = context.active_object
+            quad_bm = bmesh.new()
+            quad_bm.from_mesh(combined_obj.data)
+            
+            comb_mesh = combined_obj.data
+            bpy.data.objects.remove(combined_obj, do_unlink=True)
+            bpy.data.meshes.remove(comb_mesh, do_unlink=True)
+            return quad_bm
+        return None
+        
+    finally:
+        for p in part_objs:
+            try:
+                if p.name in bpy.data.objects:
+                    m = p.data
+                    bpy.data.objects.remove(p, do_unlink=True)
+                    bpy.data.meshes.remove(m, do_unlink=True)
+            except Exception:
+                pass
