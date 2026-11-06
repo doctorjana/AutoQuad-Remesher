@@ -5,6 +5,20 @@ All notable changes to the AutoQuad Remesher extension are documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-11-06
+
+### Fixed
+- **In-Memory Loose Parts Partitioning (Zero Split Parts & Source Preservation):**
+  - Replaced native `mesh.separate(type='LOOSE')` in Edit mode with pure in-memory connected component BFS partitioning.
+  - Calling `mesh.separate(type='LOOSE')` in Edit mode previously engaged Blender's multi-object editing if the source object was selected, which destructively fractured the original mesh into scene objects and left un-remeshed split parts in the user's outliner.
+  - Now, the input mesh is partitioned into topological islands purely in BMesh memory without touching the user's object or switching modes.
+  - Each loose component is remeshed sequentially via an ephemeral worker object that is immediately freed upon completion.
+  - All remeshed quad components are recombined purely in memory into a single unified quad mesh (`{obj.name}_AutoQuad`).
+  - **Guarantees:**
+    1. Every single loose part is remeshed into clean quads.
+    2. Zero split parts remain in the outliner or 3D viewport.
+    3. The user's original object is 100% preserved and untouched.
+
 ## [1.3.1] - 2026-11-06
 
 ### Added

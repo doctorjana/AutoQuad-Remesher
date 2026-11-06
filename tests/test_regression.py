@@ -343,6 +343,9 @@ print(f"  ✓ Spatial span across islands: X from {min_x:.2f} to {max_x:.2f}")
 assert total_multi_f > 0, "Multi-part remeshing produced 0 faces"
 assert multi_ratio >= 90.0, f"Multi-part output quad percentage lower than 90%: {multi_ratio:.1f}%"
 assert min_x < -1.0 and max_x > 1.0, f"Output mesh should span both separated components, got X=[{min_x}, {max_x}]"
+# Assert no split parts are present in the scene
+scene_mesh_names = [o.name for o in bpy.data.objects if o.type == 'MESH']
+assert set(scene_mesh_names) == {"Multipart_Mesh", "Multipart_Mesh_AutoQuad"}, f"Dangling split parts detected: {scene_mesh_names}"
 
 # -------------------------------------------------------------
 # Test 9: Multi-Part Remesh with Optimal Quads Auto-Detection
@@ -381,6 +384,9 @@ ratio = (quads_count / max(1, total_f)) * 100.0
 print(f"  ✓ Multi-Part Auto Optimal Output: {total_f:,} faces, {quads_count:,} quads ({ratio:.1f}%) in {dt:.4f}s")
 assert total_f > 0, "Multi-part auto optimal remeshing produced 0 faces"
 assert ratio >= 90.0, f"Quad ratio below 90%: {ratio:.1f}%"
+# Assert no split parts are present in the scene and original object preserved
+test9_mesh_names = [o.name for o in bpy.data.objects if o.type == 'MESH']
+assert set(test9_mesh_names) == {"Multi_Auto_Optimal", "Multi_Auto_Optimal_AutoQuad"}, f"Dangling split parts detected: {test9_mesh_names}"
 
 print("\n" + "=" * 60)
 print("ALL REGRESSION AND FUNCTIONAL TESTS PASSED SUCCESSFULLY!")

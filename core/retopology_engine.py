@@ -391,94 +391,156 @@ def run_retopology(context, source_obj, settings, src_bvh=None, progress_cb=None
     if context.mode != 'OBJECT':
         bpy.ops.object.mode_set(mode='OBJECT')
         
-    bpy.ops.object.select_all(action='DESELECT')
-    source_obj.select_set(True)
-    context.view_layer.objects.active = source_obj
+    # Read source mesh into BMesh safely
+    src_bm = bmesh.new()
+    src_bm.from_mesh(source_obj.data)
+    src_bm.faces.ensure_lookup_table()
+    src_bm.verts.ensure_lookup_table()
     
-    # Create non-destructive working duplicate
-    temp_mesh = source_obj.data.copy()
-    temp_mesh.name = f"{source_obj.name}_AutoQuad_Temp"
-    temp_obj = bpy.data.objects.new(f"{source_obj.name}_AutoQuad_Temp", temp_mesh)
-    temp_obj.matrix_world = source_obj.matrix_world.copy()
-    context.collection.objects.link(temp_obj)
+    # -------------------------------------------------------------
+    # 1. Partition Connected Components (Loose Parts) in Memory
+    # -------------------------------------------------------------
+    num_faces = len(src_bm.faces)
+    components = []
     
-    bpy.ops.object.select_all(action='DESELECT')
-    temp_obj.select_set(True)
-    context.view_layer.objects.active = temp_obj
-    
-    # Pre-clean duplicate to remove wire edges and loose vertices before loose parts separation
-    clean_bm = bmesh.new()
-    clean_bm.from_mesh(temp_obj.data)
-    sanitize_working_mesh(clean_bm, merge_dist=1e-4)
-    clean_bm.to_mesh(temp_obj.data)
-    clean_bm.free()
-    temp_obj.data.update()
-    
-    part_objs = [temp_obj]
-    if getattr(settings, "separate_loose_parts", True):
-        bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.mesh.select_all(action='SELECT')
-        bpy.ops.mesh.separate(type='LOOSE')
-        bpy.ops.object.mode_set(mode='OBJECT')
-        part_objs = list(context.selected_objects)
+    if getattr(settings, "separate_loose_parts", True) and num_faces > 0:
+        visited = [False] * num_faces
+        for start_idx, start_face in enumerate(src_bm.faces):
+            if visited[start_idx]:
+                continue
+            comp_faces = []
+            queue = [start_face]
+            visited[start_idx] = True
+            while queue:
+                curr = queue.pop()
+                comp_faces.append(curr)
+                for edge in curr.edges:
+                    for neighbor in edge.link_faces:
+                        n_idx = neighbor.index
+                        if not visited[n_idx]:
+                            visited[n_idx] = True
+                            queue.append(neighbor)
+            components.append(comp_faces)
+    else:
+        components = [list(src_bm.faces)]
         
-    num_parts = len(part_objs)
+    num_parts = len(components)
     
     # -------------------------------------------------------------
     # Case A: Single Part
     # -------------------------------------------------------------
     if num_parts <= 1:
-        single_obj = part_objs[0]
+        src_bm.free()
+        
+        # Create single isolated worker object
+        temp_mesh = source_obj.data.copy()
+        temp_mesh.name = f"{source_obj.name}_AutoQuad_Worker"
+        worker_obj = bpy.data.objects.new(temp_mesh.name, temp_mesh)
+        worker_obj.matrix_world = source_obj.matrix_world.copy()
+        context.collection.objects.link(worker_obj)
+        
+        for o in bpy.data.objects:
+            if o:
+                try:
+                    o.select_set(False)
+                except Exception:
+                    pass
+        worker_obj.select_set(True)
+        context.view_layer.objects.active = worker_obj
+        
         if progress_cb:
-            progress_cb(1, 1, single_obj)
+            progress_cb(1, 1, worker_obj)
         if getattr(settings, "auto_target_quads", False):
             try:
                 from .adaptive_density import calculate_optimal_quad_count
-                settings.target_quad_count = calculate_optimal_quad_count(single_obj)
+                settings.target_quad_count = calculate_optimal_quad_count(worker_obj)
             except Exception:
                 pass
                 
         try:
             quad_bm = run_retopology_single_part(
-                context, single_obj, settings,
+                context, worker_obj, settings,
                 target_faces=settings.target_quad_count,
                 src_bvh=src_bvh
             )
             return quad_bm
         finally:
             try:
-                m = single_obj.data
-                bpy.data.objects.remove(single_obj, do_unlink=True)
+                m = worker_obj.data
+                bpy.data.objects.remove(worker_obj, do_unlink=True)
                 bpy.data.meshes.remove(m, do_unlink=True)
             except Exception:
                 pass
-
+                
     # -------------------------------------------------------------
-    # Case B: Multi-Part (Separated by Loose Parts)
+    # Case B: Multi-Part (Separated by Loose Parts in Memory)
     # -------------------------------------------------------------
+    total_area = sum(f.calc_area() for f in src_bm.faces)
+    target_total = max(100, getattr(settings, "target_quad_count", 2500))
     budgets = []
+    
     if getattr(settings, "auto_target_quads", False):
         from .adaptive_density import calculate_optimal_quad_count
-        for p in part_objs:
-            budgets.append(calculate_optimal_quad_count(p))
+        for comp_faces in components:
+            part_bm = bmesh.new()
+            v_map = {}
+            for f in comp_faces:
+                for v in f.verts:
+                    if v not in v_map:
+                        v_map[v] = part_bm.verts.new(v.co)
+            part_bm.verts.ensure_lookup_table()
+            for f in comp_faces:
+                part_bm.faces.new([v_map[v] for v in f.verts])
+            budgets.append(calculate_optimal_quad_count(None, bm=part_bm))
+            part_bm.free()
     else:
-        total_p_area = sum(sum(getattr(f, "area", 1.0) for f in p.data.polygons) for p in part_objs)
-        target_total = max(100, getattr(settings, "target_quad_count", 2500))
-        for p in part_objs:
-            p_area = sum(getattr(f, "area", 1.0) for f in p.data.polygons)
-            ratio = p_area / max(1e-6, total_p_area)
-            part_budget = max(60, int(target_total * ratio))
+        for comp_faces in components:
+            part_area = sum(f.calc_area() for f in comp_faces)
+            ratio = part_area / max(1e-6, total_area)
+            part_budget = max(100, int(target_total * ratio))
             budgets.append(part_budget)
             
-    remeshed_part_objs = []
+    remeshed_bms = []
     
     try:
-        for idx, (part_obj, budget) in enumerate(zip(part_objs, budgets)):
+        for idx, (comp_faces, budget) in enumerate(zip(components, budgets)):
             part_num = idx + 1
+            
+            # Extract component geometry into a standalone worker object
+            comp_bm = bmesh.new()
+            v_map = {}
+            for f in comp_faces:
+                for v in f.verts:
+                    if v not in v_map:
+                        v_map[v] = comp_bm.verts.new(v.co)
+            comp_bm.verts.ensure_lookup_table()
+            for f in comp_faces:
+                comp_bm.faces.new([v_map[v] for v in f.verts])
+            comp_bm.normal_update()
+            
+            worker_mesh = bpy.data.meshes.new(f"{source_obj.name}_Worker_{idx}")
+            comp_bm.to_mesh(worker_mesh)
+            comp_bm.free()
+            worker_mesh.update()
+            
+            worker_obj = bpy.data.objects.new(f"{source_obj.name}_Worker_{idx}", worker_mesh)
+            worker_obj.matrix_world = source_obj.matrix_world.copy()
+            context.collection.objects.link(worker_obj)
+            
+            # Keep all existing objects (including source_obj) strictly deselected
+            for o in bpy.data.objects:
+                if o:
+                    try:
+                        o.select_set(False)
+                    except Exception:
+                        pass
+            worker_obj.select_set(True)
+            context.view_layer.objects.active = worker_obj
+            
             if progress_cb:
-                progress_cb(part_num, num_parts, part_obj)
+                progress_cb(part_num, num_parts, worker_obj)
                 
-            status_msg = f"AutoQuad: Remeshing loose part {part_num}/{num_parts} ({len(part_obj.data.polygons):,} polys)..."
+            status_msg = f"AutoQuad: Remeshing loose part {part_num}/{num_parts} ({len(worker_mesh.polygons):,} polys)..."
             if hasattr(settings, "processing_status"):
                 settings.processing_status = f"Remeshing part {part_num}/{num_parts}..."
             if hasattr(context, "workspace") and context.workspace:
@@ -492,46 +554,40 @@ def run_retopology(context, source_obj, settings, src_bvh=None, progress_cb=None
                 except Exception:
                     pass
                     
-            part_bm = run_retopology_single_part(
-                context, part_obj, settings,
-                target_faces=budget,
-                src_bvh=None
-            )
-            
-            if part_bm and len(part_bm.faces) > 0:
-                part_obj.matrix_world = Matrix.Identity(4)
-                part_obj.data.clear_geometry()
-                part_bm.to_mesh(part_obj.data)
-                part_obj.data.update()
-                part_bm.free()
-                remeshed_part_objs.append(part_obj)
-            else:
-                remeshed_part_objs.append(part_obj)
+            try:
+                part_bm = run_retopology_single_part(
+                    context, worker_obj, settings,
+                    target_faces=budget,
+                    src_bvh=None
+                )
+                if part_bm and len(part_bm.faces) > 0:
+                    remeshed_bms.append(part_bm)
+            finally:
+                # Clean up worker object immediately after processing this part
+                try:
+                    bpy.data.objects.remove(worker_obj, do_unlink=True)
+                    bpy.data.meshes.remove(worker_mesh, do_unlink=True)
+                except Exception:
+                    pass
+                    
+        # Combine all cleanly remeshed quad parts in memory
+        if remeshed_bms:
+            final_bm = bmesh.new()
+            for qbm in remeshed_bms:
+                v_map = {}
+                for v in qbm.verts:
+                    v_map[v] = final_bm.verts.new(v.co)
+                final_bm.verts.ensure_lookup_table()
+                for f in qbm.faces:
+                    final_bm.faces.new([v_map[v] for v in f.verts])
+                qbm.free()
                 
-        # Join all remeshed parts back into a single unified mesh object
-        if remeshed_part_objs:
-            bpy.ops.object.select_all(action='DESELECT')
-            for p in remeshed_part_objs:
-                p.select_set(True)
-            context.view_layer.objects.active = remeshed_part_objs[0]
-            bpy.ops.object.join()
+            final_bm.verts.ensure_lookup_table()
+            final_bm.faces.ensure_lookup_table()
+            final_bm.normal_update()
+            return final_bm
             
-            combined_obj = context.active_object
-            quad_bm = bmesh.new()
-            quad_bm.from_mesh(combined_obj.data)
-            
-            comb_mesh = combined_obj.data
-            bpy.data.objects.remove(combined_obj, do_unlink=True)
-            bpy.data.meshes.remove(comb_mesh, do_unlink=True)
-            return quad_bm
         return None
         
     finally:
-        for p in part_objs:
-            try:
-                if p.name in bpy.data.objects:
-                    m = p.data
-                    bpy.data.objects.remove(p, do_unlink=True)
-                    bpy.data.meshes.remove(m, do_unlink=True)
-            except Exception:
-                pass
+        src_bm.free()

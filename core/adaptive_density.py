@@ -82,7 +82,7 @@ class AdaptiveDensityField:
         self.face_target_sizes = graded_sizes
         return self.face_target_sizes
 
-def calculate_optimal_quad_count(obj, bm=None):
+def calculate_optimal_quad_count(obj=None, bm=None):
     """
     Estimates the mathematically optimal target quad count for the given mesh
     to preserve all structural features and silhouettes without distortion or faceting.
@@ -93,7 +93,9 @@ def calculate_optimal_quad_count(obj, bm=None):
     - Ratio of curved surface area vs flat planar surfaces
     - Bounding dimensions and characteristic scale
     """
-    if obj is None or obj.type != 'MESH':
+    if obj is None and bm is None:
+        return 2500
+    if obj is not None and obj.type != 'MESH' and bm is None:
         return 2500
         
     created_bm = False
@@ -105,9 +107,19 @@ def calculate_optimal_quad_count(obj, bm=None):
     try:
         bm.edges.ensure_lookup_table()
         bm.faces.ensure_lookup_table()
+        bm.verts.ensure_lookup_table()
         
-        dims = obj.dimensions
-        char_size = max(dims.x, dims.y, dims.z, 1e-4)
+        if obj is not None and hasattr(obj, "dimensions"):
+            dims = obj.dimensions
+            char_size = max(dims.x, dims.y, dims.z, 1e-4)
+        else:
+            if bm.verts:
+                xs = [v.co.x for v in bm.verts]
+                ys = [v.co.y for v in bm.verts]
+                zs = [v.co.z for v in bm.verts]
+                char_size = max(max(xs)-min(xs), max(ys)-min(ys), max(zs)-min(zs), 1e-4)
+            else:
+                char_size = 1.0
         
         num_edges = len(bm.edges)
         if num_edges == 0:
