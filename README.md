@@ -10,8 +10,16 @@
 Developed by **Doctor Jana** for **Blender 4.2 LTS and newer** (including Blender 5.0 and 5.2+). It converts dense sculpts, photogrammetry 3D scans, CAD models, or uneven triangular meshes into production-ready quad geometry.
 
 <p align="center">
-  <img src="SkullRetopo.gif" alt="AutoQuad Remesher Demo" width="720">
+  <img src="SkullRetopo.gif" alt="AutoQuad Remesher Demo Animation" width="760">
 </p>
+
+---
+
+## Before & After Showcase
+
+| Original Input Scan (Dense / Triangles) | AutoQuad Clean Quad Topology (Result) |
+| :---: | :---: |
+| <img src="before.jpg" alt="Before Remeshing" width="380"> | <img src="after.jpg" alt="After Remeshing" width="380"> |
 
 ---
 
@@ -58,21 +66,58 @@ When you click **Remesh**, a responsive, asynchronous loading indicator is displ
 
 ---
 
-## Installation
+## Installation & Download
 
-### Via Blender Extensions (Blender 4.2+)
-1. Download the latest release `.zip` from the [Releases](https://github.com/doctorjana/AutoQuad-Remesher/releases) page.
-2. In Blender, open **Edit > Preferences > Get Extensions** (or **Add-ons**).
-3. Click the top-right chevron menu **(∨)** and select **Install from Disk...**
-4. Choose the zip file and confirm.
-5. In the 3D Viewport, press **N** to open the sidebar and select the **AutoQuad** tab.
+### Method 1: Direct Download (Standard Release Zip)
+
+👉 **[Download autoquad_remesher-1.3.7.zip](https://github.com/doctorjana/AutoQuad-Remesher/raw/master/release/autoquad_remesher-1.3.7.zip)** *(Direct Download, 76 KB)*
+
+1. In Blender, open **Edit > Preferences > Get Extensions** (or **Add-ons** in older preferences).
+2. Click the top-right chevron menu **(∨)** and select **Install from Disk...**
+3. Select the downloaded `autoquad_remesher-1.3.7.zip` and confirm.
+4. In the 3D Viewport, press <kbd>N</kbd> to open the sidebar and select the **AutoQuad** tab!
+
+---
+
+### Method 2: One-Click Script Editor Installation (No Manual Download)
+
+You can install and enable AutoQuad automatically from inside Blender without downloading files manually:
+1. Open Blender and switch to the **Scripting** workspace (or open a **Text Editor**).
+2. Click **New**, paste the following snippet, and click **Run Script** (or press <kbd>Alt</kbd> + <kbd>P</kbd>):
+
+```python
+import os, tempfile, urllib.request, bpy
+
+url = "https://github.com/doctorjana/AutoQuad-Remesher/raw/master/release/autoquad_remesher-1.3.7.zip"
+tmp_zip = os.path.join(tempfile.gettempdir(), "autoquad_remesher-1.3.7.zip")
+
+print("Downloading AutoQuad Remesher...")
+urllib.request.urlretrieve(url, tmp_zip)
+
+if hasattr(bpy.ops.preferences, "extension_install"):
+    bpy.ops.preferences.extension_install(filepath=tmp_zip, repo='user_default')
+else:
+    bpy.ops.preferences.addon_install(filepath=tmp_zip)
+    bpy.ops.preferences.addon_enable(module="autoquad_remesher")
+
+print("AutoQuad Remesher installed & ready! Open 3D Viewport sidebar (N) > AutoQuad tab.")
+```
+
+---
+
+### Method 3: Copy-Paste Standalone Script (Run Directly in Script Editor)
+
+If you prefer running the addon without installing zip packages:
+1. Open [`autoquad_standalone.py`](https://github.com/doctorjana/AutoQuad-Remesher/blob/master/autoquad_standalone.py) in this repository and click **Copy raw file**.
+2. In Blender, go to the **Scripting** tab, click **New**, paste the code, and press **Run Script** (<kbd>Alt</kbd> + <kbd>P</kbd>).
+3. The **AutoQuad** sidebar panel will register and appear immediately in the 3D Viewport!
 
 ---
 
 ## Quick Start
 
 1. Select your target mesh in **Object Mode**.
-2. Press **N** to open the 3D Viewport sidebar and switch to the **AutoQuad** tab.
+2. Press <kbd>N</kbd> to open the 3D Viewport sidebar and switch to the **AutoQuad** tab.
 3. Enable **Optimal Quads (Auto)** or adjust **Target Quads** manually.
 4. Click **Remesh**. The loading indicator will display live progress across parts, and your new quad mesh (`<Name>_AutoQuad`) will be created and activated with smooth shading.
 
