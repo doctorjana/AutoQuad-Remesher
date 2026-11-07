@@ -3,12 +3,11 @@
 [![Blender](https://img.shields.io/badge/Blender-4.2%20%7C%205.0%20%7C%205.2%2B-orange.svg)](https://www.blender.org/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-green.svg)]()
-[![Website](https://img.shields.io/badge/Website-GitHub%20Pages-blue.svg)](https://doctorjana.github.io/autoquad_remesher/)
 [![Manifest Validated](https://img.shields.io/badge/Extension%20Manifest-Passed-success.svg)]()
 
-**AutoQuad Remesher** is a streamlined, automatic quad remeshing extension for **Blender 4.2 LTS and newer** (including Blender 5.0 and 5.2+), developed by **Doctor Jana**. It converts dense sculpts, photogrammetry 3D scans, CAD models, or uneven triangular meshes into clean, production-ready quad geometry.
+**AutoQuad Remesher** is a Blender add-on that automatically transforms complex 3D meshes into clean, high-quality quad topology while preserving surface details and sharp features. Designed for organic, hard-surface, and mechanical models, it makes professional automatic remeshing simple and efficient.
 
-**Project Website & Documentation:** [https://doctorjana.github.io/autoquad_remesher/](https://doctorjana.github.io/autoquad_remesher/)
+Developed by **Doctor Jana** for **Blender 4.2 LTS and newer** (including Blender 5.0 and 5.2+). It converts dense sculpts, photogrammetry 3D scans, CAD models, or uneven triangular meshes into production-ready quad geometry.
 
 ---
 
@@ -23,30 +22,34 @@ AutoQuad Remesher provides a clean, single-click interface designed for speed an
 +------------------------------------------+
 | [⚡ Remesh]                               |
 +------------------------------------------+
-| Target Quads: 2500                       |
+| [x] Optimal Quads (Auto)                 |
+| Quality: 1.00                            |
 | Adaptive Size: 0.65                      |
 +------------------------------------------+
 | ▼ Advanced Options                       |
 |   [ ] Preprocess Mesh (Auto-repair)      |
+|   [ ] Decimate Mesh                      |
+|   [x] Remesh by Loose Parts              |
 |   [x] Hide Original Mesh                 |
-|   [🛠️ Make Mesh Manifold]                 |  <-- Standalone testing button
 +------------------------------------------+
 ```
 
-When you click **Remesh**, a dynamic loading indicator is displayed while the algorithm executes, and the source mesh is automatically hidden so you immediately see the clean quad result.
+When you click **Remesh**, a responsive, asynchronous loading indicator is displayed while the algorithm executes. You can cancel at any time with <kbd>ESC</kbd>, and the source mesh is automatically hidden so you immediately see the clean quad result.
 
 ---
 
 ## Key Features
 
-- **One-Click Remeshing:** Straightforward workflow with just one button and two core sliders: **Target Quads** and **Adaptive Size**.
-- **Preprocess Mesh (Make Manifold):** Integrated 3D-Print Toolbox repair logic to clean up non-manifold elements, remove duplicate vertices, fill holes, delete loose/interior geometry, and fix inverted normals prior to remeshing.
-- **Visual Loading Indicator:** Responsive feedback with progress state and wait cursor while the mesh is processed.
-- **Auto-Hide Original Mesh:** Keeps your viewport clean by automatically hiding the high-poly source mesh upon generation (toggleable under Advanced Options).
+- **Zero-Guesswork Optimal Quads:** Automatically evaluates discrete dihedral turning energy, mean surface curvature, and surface area to compute the mathematically optimal quad budget without manual trial and error.
+- **Quality Multiplier:** Easily scale target density up or down (e.g. `2.0x` for 2x denser quads on high-frequency sculpts, or `0.5x` for lightweight real-time assets).
+- **In-Memory Loose Parts Extraction:** Automatically segments complex multi-part meshes (e.g., characters with eyes/teeth, mechanical assemblies, multi-shell 3D scans) in memory, calculates tailored budgets per component, remeshes each shell independently, and seamlessly recombines them into a single unified quad mesh.
+- **Scale-Invariant Geometry Normalization:** Automatically conditions sub-meter metric scans (e.g. human anatomy, dental models, jewelry) into optimal numerical space, eliminating floating-point underflow and false non-manifold errors.
+- **Non-Blocking Asynchronous UI:** Generator-driven modal event loop updates live progress percentages in the status bar and animates the sidebar spinner without freezing Blender ("Not Responding"). Supports instant cancellation via <kbd>ESC</kbd>.
 - **Dual-Engine Architecture:**
   - **Native C++ Acceleration:** Fast, parameterization-guided solver generating 95%+ regular quads.
   - **Discrete Differential Geometry Fallback:** Pure Python / BMesh topological patch solver using discrete shape operators and Weingarten curvature estimation.
-- **Adaptive Polygon Sizing:** Concentrates polygon density in crevices, bevels, and tight curves while maintaining larger quads across planar surfaces.
+- **Preprocess Mesh (Make Manifold):** Integrated 3D-Print repair logic to clean up non-manifold elements, remove duplicate vertices, fill holes, delete loose/interior geometry, and fix inverted normals.
+- **Non-Destructive Workflow:** Your original source model is 100% preserved and untouched; newly generated quads are output as a clean `<Name>_AutoQuad` object.
 - **100% Self-Contained:** Zero external dependencies or manual Python environment setups required. Runs completely offline.
 
 ---
@@ -54,10 +57,10 @@ When you click **Remesh**, a dynamic loading indicator is displayed while the al
 ## Installation
 
 ### Via Blender Extensions (Blender 4.2+)
-1. Download `autoquad_remesher-1.1.0.zip` from the [Releases](https://github.com/doctorjana/autoquad_remesher/releases) page.
+1. Download the latest release `.zip` from the [Releases](https://github.com/doctorjana/AutoQuad-Remesher/releases) page.
 2. In Blender, open **Edit > Preferences > Get Extensions** (or **Add-ons**).
 3. Click the top-right chevron menu **(∨)** and select **Install from Disk...**
-4. Choose `autoquad_remesher-1.1.0.zip` and confirm.
+4. Choose the zip file and confirm.
 5. In the 3D Viewport, press **N** to open the sidebar and select the **AutoQuad** tab.
 
 ---
@@ -66,12 +69,14 @@ When you click **Remesh**, a dynamic loading indicator is displayed while the al
 
 1. Select your target mesh in **Object Mode**.
 2. Press **N** to open the 3D Viewport sidebar and switch to the **AutoQuad** tab.
-3. Adjust **Target Quads** (default: `2500`) and **Adaptive Size** (default: `0.65`).
-4. Click **Remesh**. The loading indicator will display while the mesh is computed, and your new quad mesh (`<Name>_AutoQuad`) will be created and activated with smooth shading.
+3. Enable **Optimal Quads (Auto)** or adjust **Target Quads** manually.
+4. Click **Remesh**. The loading indicator will display live progress across parts, and your new quad mesh (`<Name>_AutoQuad`) will be created and activated with smooth shading.
 
 ---
 
 ## Automated Testing
+
+AutoQuad includes an exhaustive 13-test automated regression suite:
 
 ```bash
 # Validate extension manifest
@@ -80,7 +85,7 @@ blender --command extension validate .
 # Run extension registration lifecycle tests
 blender --background --python tests/test_registration.py
 
-# Run geometry regression tests
+# Run geometry regression test suite
 blender --background --python tests/test_regression.py
 ```
 
