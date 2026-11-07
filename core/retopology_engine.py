@@ -154,14 +154,31 @@ def run_retopology_single_part(context, temp_obj, settings, target_faces=None, s
         fill_holes_opt = getattr(settings, "fill_holes_on_preprocess", False)
         make_manifold(context, temp_obj, fill_holes=fill_holes_opt, preserve_curvature=True)
         temp_obj.data.update()
-        
-    # Build reference BVH from working geometry (before decimation to keep full surface resolution)
+
+    # Build reference BVH from working geometry (before decimation/scaling to keep full surface resolution)
     if getattr(settings, "preprocess_mesh", False) or src_bvh is None:
         src_bm_temp = bmesh.new()
         src_bm_temp.from_mesh(temp_obj.data)
         src_bm_temp.transform(temp_obj.matrix_world)
         src_bvh = BVHTree.FromBMesh(src_bm_temp, epsilon=1e-5)
         src_bm_temp.free()
+
+    # -------------------------------------------------------------
+    # Scale Normalization for QuadriFlow Numerical Stability
+    # -------------------------------------------------------------
+    # QuadriFlow's C++ solver has hardcoded numerical singularity tolerances (~1e-4).
+    # Sub-meter metric meshes (e.g. 0.05m - 0.2m anatomy, teeth, jewelry) have edge
+    # lengths near this tolerance, causing QuadriFlow to falsely detect non-manifold
+    # defects or zero-length edges. We temporarily scale sub-meter meshes into standard
+    # Blender primitive space (~2.0 units) and invert scale upon extracting quad geometry.
+    dims = temp_obj.dimensions
+    max_d = max(dims.x, dims.y, dims.z)
+    scale_factor = 1.0
+    if max_d > 1e-6 and max_d < 0.5:
+        scale_factor = 2.0 / max_d
+        temp_obj.scale = (scale_factor, scale_factor, scale_factor)
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+        temp_obj.data.update()
         
     # -------------------------------------------------------------
     # Optional: Non-destructive User Decimate Pre-pass
@@ -348,6 +365,11 @@ def run_retopology_single_part(context, temp_obj, settings, target_faces=None, s
     # -------------------------------------------------------------
     # 4. Surface Reprojection & Orthogonal Relaxation
     # -------------------------------------------------------------
+    if scale_factor != 1.0:
+        inv_s = 1.0 / scale_factor
+        quad_bm.transform(Matrix.Scale(inv_s, 4))
+        quad_bm.normal_update()
+
     relax_steps = getattr(settings, "relaxation_steps", 10)
     if relax_steps > 0 and src_bvh is not None:
         engine = SurfaceRelaxationEngine(
@@ -368,42 +390,39 @@ def run_retopology_single_part(context, temp_obj, settings, target_faces=None, s
     
     return quad_bm
 
-def run_retopology(context, source_obj, settings, src_bvh=None, progress_cb=None):
+def run_retopology_steps(context, source_obj, settings, src_bvh=None):
     """
-    Executes the complete AutoQuad retopology pipeline:
-    1. Internally partitions the mesh into disconnected loose parts (connected components).
-    2. Dynamically allocates target quad budgets per loose component.
-    3. Remeshes each loose component individually while updating visual progress.
-    4. Recombines all remeshed quad components into a unified quad mesh.
-    
+    Generator that executes the AutoQuad retopology pipeline step-by-step,
+    yielding progress tuples back to the caller / modal event loop:
+        (stage: str, message: str, current_step: int, total_steps: int, payload: Any)
+
+    Stages:
+        - "INITIALIZING": BFS topological island segmentation & budget calculations.
+        - "REMESHING_PART": Active remeshing of an individual component worker.
+        - "COMBINING": Recombining discrete quad meshes in memory.
+        - "FINISHED": Pipeline complete. Payload contains the final bmesh.types.BMesh.
+
     Parameters:
         context: Blender context
         source_obj: Source mesh Object to remesh
-        settings: AutoQuadSettings instance containing algorithm configuration
-        src_bvh: Optional pre-built BVHTree in world space (constructed if None)
-        progress_cb: Optional callback function progress_cb(current_part, total_parts, part_obj)
-        
-    Returns:
-        bmesh.types.BMesh: A newly allocated BMesh in world coordinates containing
-                           the retopologized regular quad geometry.
-                           Caller is responsible for freeing the bmesh.
+        settings: AutoQuadSettings instance
+        src_bvh: Optional pre-built BVHTree in world space
     """
     if context.mode != 'OBJECT':
         bpy.ops.object.mode_set(mode='OBJECT')
-        
+
+    yield ("INITIALIZING", "Analyzing source topology...", 0, 100, None)
+
     # Read source mesh into BMesh safely
     src_bm = bmesh.new()
     src_bm.from_mesh(source_obj.data)
     sanitize_working_mesh(src_bm, merge_dist=1e-7)
     src_bm.faces.ensure_lookup_table()
     src_bm.verts.ensure_lookup_table()
-    
-    # -------------------------------------------------------------
-    # 1. Partition Connected Components (Loose Parts) in Memory
-    # -------------------------------------------------------------
+
     num_faces = len(src_bm.faces)
     components = []
-    
+
     if getattr(settings, "separate_loose_parts", True) and num_faces > 0:
         visited = [False] * num_faces
         for start_idx, start_face in enumerate(src_bm.faces):
@@ -424,22 +443,33 @@ def run_retopology(context, source_obj, settings, src_bvh=None, progress_cb=None
             components.append(comp_faces)
     else:
         components = [list(src_bm.faces)]
-        
+
     num_parts = len(components)
-    
+
     # -------------------------------------------------------------
     # Case A: Single Part
     # -------------------------------------------------------------
     if num_parts <= 1:
         src_bm.free()
-        
-        # Create single isolated worker object
+
+        target_budget = getattr(settings, "target_quad_count", 2500)
+        if getattr(settings, "auto_target_quads", False):
+            try:
+                from .adaptive_density import calculate_optimal_quad_count
+                q = getattr(settings, "quality", 1.0)
+                target_budget = calculate_optimal_quad_count(source_obj, quality=q)
+                settings.target_quad_count = target_budget
+            except Exception:
+                pass
+
+        yield ("INITIALIZING", f"Target budget: {target_budget:,} quads...", 1, 3, None)
+
         temp_mesh = source_obj.data.copy()
         temp_mesh.name = f"{source_obj.name}_AutoQuad_Worker"
         worker_obj = bpy.data.objects.new(temp_mesh.name, temp_mesh)
         worker_obj.matrix_world = source_obj.matrix_world.copy()
         context.collection.objects.link(worker_obj)
-        
+
         for o in bpy.data.objects:
             if o:
                 try:
@@ -448,24 +478,15 @@ def run_retopology(context, source_obj, settings, src_bvh=None, progress_cb=None
                     pass
         worker_obj.select_set(True)
         context.view_layer.objects.active = worker_obj
-        
-        if progress_cb:
-            progress_cb(1, 1, worker_obj)
-        if getattr(settings, "auto_target_quads", False):
-            try:
-                from .adaptive_density import calculate_optimal_quad_count
-                q = getattr(settings, "quality", 1.0)
-                settings.target_quad_count = calculate_optimal_quad_count(worker_obj, quality=q)
-            except Exception:
-                pass
-                
+
+        yield ("REMESHING_PART", f"Remeshing quad topology ({target_budget:,} quads)...", 2, 3, worker_obj)
+
         try:
             quad_bm = run_retopology_single_part(
                 context, worker_obj, settings,
-                target_faces=settings.target_quad_count,
+                target_faces=target_budget,
                 src_bvh=src_bvh
             )
-            return quad_bm
         finally:
             try:
                 m = worker_obj.data
@@ -473,19 +494,25 @@ def run_retopology(context, source_obj, settings, src_bvh=None, progress_cb=None
                 bpy.data.meshes.remove(m, do_unlink=True)
             except Exception:
                 pass
-                
+
+        yield ("FINISHED", "Remeshing complete!", 3, 3, quad_bm)
+        return
+
     # -------------------------------------------------------------
     # Case B: Multi-Part (Separated by Loose Parts in Memory)
     # -------------------------------------------------------------
     from .adaptive_density import calculate_multi_part_budgets
     budgets, target_total = calculate_multi_part_budgets(components, src_bm, settings)
-            
+
+    total_steps = num_parts + 2  # analysis + parts + recombine
+    yield ("INITIALIZING", f"Found {num_parts} loose parts (Target: {target_total:,} quads)...", 1, total_steps, None)
+
     remeshed_bms = []
-    
+
     try:
         for idx, (comp_faces, budget) in enumerate(zip(components, budgets)):
             part_num = idx + 1
-            
+
             # Extract component geometry into a standalone worker object
             comp_bm = bmesh.new()
             v_map = {}
@@ -502,16 +529,16 @@ def run_retopology(context, source_obj, settings, src_bvh=None, progress_cb=None
                     except ValueError:
                         pass
             comp_bm.normal_update()
-            
+
             worker_mesh = bpy.data.meshes.new(f"{source_obj.name}_Worker_{idx}")
             comp_bm.to_mesh(worker_mesh)
             comp_bm.free()
             worker_mesh.update()
-            
+
             worker_obj = bpy.data.objects.new(f"{source_obj.name}_Worker_{idx}", worker_mesh)
             worker_obj.matrix_world = source_obj.matrix_world.copy()
             context.collection.objects.link(worker_obj)
-            
+
             # Keep all existing objects (including source_obj) strictly deselected
             for o in bpy.data.objects:
                 if o:
@@ -521,24 +548,10 @@ def run_retopology(context, source_obj, settings, src_bvh=None, progress_cb=None
                         pass
             worker_obj.select_set(True)
             context.view_layer.objects.active = worker_obj
-            
-            if progress_cb:
-                progress_cb(part_num, num_parts, worker_obj)
-                
-            status_msg = f"AutoQuad: Remeshing loose part {part_num}/{num_parts} ({len(worker_mesh.polygons):,} polys -> {budget:,} quads)..."
-            if hasattr(settings, "processing_status"):
-                settings.processing_status = f"Remeshing part {part_num}/{num_parts} ({budget:,} quads)..."
-            if hasattr(context, "workspace") and context.workspace:
-                try:
-                    context.workspace.status_text_set(status_msg)
-                except Exception:
-                    pass
-            if hasattr(context, "area") and context.area:
-                try:
-                    context.area.tag_redraw()
-                except Exception:
-                    pass
-                    
+
+            status_msg = f"Remeshing part {part_num}/{num_parts} ({budget:,} quads)..."
+            yield ("REMESHING_PART", status_msg, part_num, total_steps, worker_obj)
+
             try:
                 part_bm = run_retopology_single_part(
                     context, worker_obj, settings,
@@ -548,14 +561,16 @@ def run_retopology(context, source_obj, settings, src_bvh=None, progress_cb=None
                 if part_bm and len(part_bm.faces) > 0:
                     remeshed_bms.append(part_bm)
             finally:
-                # Clean up worker object immediately after processing this part
                 try:
                     bpy.data.objects.remove(worker_obj, do_unlink=True)
                     bpy.data.meshes.remove(worker_mesh, do_unlink=True)
                 except Exception:
                     pass
-                    
+
         # Combine all cleanly remeshed quad parts in memory
+        yield ("COMBINING", f"Recombining {len(remeshed_bms)} remeshed parts...", num_parts + 1, total_steps, None)
+
+        final_bm = None
         if remeshed_bms:
             final_bm = bmesh.new()
             for qbm in remeshed_bms:
@@ -571,13 +586,42 @@ def run_retopology(context, source_obj, settings, src_bvh=None, progress_cb=None
                         except ValueError:
                             pass
                 qbm.free()
-                
+
             final_bm.verts.ensure_lookup_table()
             final_bm.faces.ensure_lookup_table()
             final_bm.normal_update()
-            return final_bm
-            
-        return None
-        
+
+        yield ("FINISHED", "Remeshing complete!", total_steps, total_steps, final_bm)
+
     finally:
         src_bm.free()
+
+
+def run_retopology(context, source_obj, settings, src_bvh=None, progress_cb=None):
+    """
+    Executes the complete AutoQuad retopology pipeline synchronously:
+    1. Internally partitions the mesh into disconnected loose parts (connected components).
+    2. Dynamically allocates target quad budgets per loose component.
+    3. Remeshes each loose component individually.
+    4. Recombines all remeshed quad components into a unified quad mesh.
+
+    Parameters:
+        context: Blender context
+        source_obj: Source mesh Object to remesh
+        settings: AutoQuadSettings instance containing algorithm configuration
+        src_bvh: Optional pre-built BVHTree in world space (constructed if None)
+        progress_cb: Optional callback function progress_cb(current_part, total_parts, worker_obj)
+
+    Returns:
+        bmesh.types.BMesh: A newly allocated BMesh in world coordinates containing
+                           the retopologized regular quad geometry.
+                           Caller is responsible for freeing the bmesh.
+    """
+    final_bm = None
+    for stage, msg, step, total_steps, payload in run_retopology_steps(context, source_obj, settings, src_bvh):
+        if progress_cb and stage == "REMESHING_PART":
+            progress_cb(step, total_steps, payload)
+        if stage == "FINISHED":
+            final_bm = payload
+    return final_bm
+

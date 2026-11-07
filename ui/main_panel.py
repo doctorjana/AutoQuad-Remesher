@@ -48,10 +48,13 @@ class VIEW3D_PT_autoquad_main(Panel):
         if settings.is_processing:
             load_box = layout.box()
             load_row = load_box.row(align=True)
-            load_row.scale_y = 1.6
+            load_row.scale_y = 1.4
             load_row.alignment = 'CENTER'
             status_text = getattr(settings, "processing_status", "Remeshing in progress...")
             load_row.label(text=status_text, icon='PREVIEW_LOADING')
+            esc_row = load_box.row(align=True)
+            esc_row.alignment = 'CENTER'
+            esc_row.label(text="Press ESC to cancel", icon='PANEL_CLOSE')
         else:
             col = layout.column(align=True)
             col.scale_y = 1.5

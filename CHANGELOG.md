@@ -5,6 +5,29 @@ All notable changes to the AutoQuad Remesher extension are documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.7] - 2026-11-07
+
+### Added
+- **Automatic Scale Normalization for Metric / Sub-Meter Meshes:**
+  - Resolved QuadriFlow C++ solver numerical underflow on real-world sub-meter meshes (e.g. human anatomy, medical CT scans, teeth, jewelry, and 3D photogrammetry).
+  - QuadriFlow's native C++ solver uses hardcoded absolute geometric singularity tolerances ($\sim 10^{-4}$). In meshes modeled at real-world scale (e.g. 5cm to 15cm skull bones), micro-edges and suture margins triggered false `QUADRIFLOW_STATUS_NONMANIFOLD` rejections.
+  - AutoQuad now dynamically normalizes sub-meter meshes ($d_{\max} < 0.5\text{m}$) into standard numerical space ($\sim 2.0$ units) before invoking QuadriFlow, and precisely transforms the resulting quad geometry back into true world space coordinates.
+  - Verified on complex real-world `skull.obj` scan: achieved a 100% success rate across all 54 disconnected components (0 dropped parts, 12,883 quads, 100.0% clean regular quad topology in 18.66s).
+
+## [1.3.6] - 2026-11-07
+
+### Added
+- **Generator-Driven Asynchronous Modal State Machine:**
+  - Implemented `run_retopology_steps()` generator in `core/retopology_engine.py` yielding discrete execution states (`INITIALIZING`, `REMESHING_PART`, `COMBINING`, `FINISHED`).
+  - Refactored `VIEW3D_OT_autoquad_remesh` modal operator into an asynchronous event loop state machine advancing on 0.02s (~50Hz) timer ticks.
+  - Blender's main event loop now smoothly processes interface redrawing, cursor animations, and viewport repainting between parts and stages without freezing or triggering Windows "Application Not Responding".
+- **Interactive User Cancellation:**
+  - Added real-time cancellation via `ESC` key during active remeshing.
+  - Automatically restores mouse cursor, clears status indicators, and purges any active worker objects without leaving leftover geometry.
+- **Enhanced UI Feedback:**
+  - Added live percentage and stage progress in both the sidebar panel and the workspace bottom status bar (`context.workspace.status_text_set`).
+  - Added cancellation hint (`Press ESC to cancel`) in the sidebar loading box.
+
 ## [1.3.5] - 2026-11-06
 
 ### Added

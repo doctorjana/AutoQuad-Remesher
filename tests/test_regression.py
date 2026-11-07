@@ -10,6 +10,11 @@ import sys
 import os
 import math
 import time
+
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+except Exception:
+    pass
 import bpy
 import bmesh
 from mathutils.bvhtree import BVHTree
@@ -28,6 +33,7 @@ from quadflow_retopology.core import (
     QuadPatchExtractor,
     SurfaceRelaxationEngine,
     run_retopology,
+    run_retopology_steps,
 )
 
 print("=" * 60)
@@ -538,6 +544,56 @@ qual_quads = sum(1 for f in qual_out.data.polygons if len(f.vertices) == 4)
 print(f"  ✓ Remeshed at Quality 1.5x: {total_qual_f:,} faces, {qual_quads:,} quads in {dt:.4f}s")
 assert total_qual_f > 0, "Quality remeshing produced 0 faces"
 assert qual_quads >= int(total_qual_f * 0.90), "Quad ratio below 90%"
+
+# -------------------------------------------------------------
+# Test 13: Generator-Driven Stepping (Asynchronous Modal Pipeline)
+# -------------------------------------------------------------
+print("\n[TEST 13] Testing generator-driven pipeline stepping (run_retopology_steps)...")
+bpy.ops.wm.read_factory_settings(use_empty=True)
+
+# Build a multi-part object with 2 cubes
+bpy.ops.mesh.primitive_cube_add(size=1.0, location=(-2.0, 0, 0))
+cube_a = bpy.context.active_object
+cube_a.name = "Cube_A"
+
+bpy.ops.mesh.primitive_cube_add(size=1.5, location=(2.0, 0, 0))
+cube_b = bpy.context.active_object
+cube_b.name = "Cube_B"
+
+cube_a.select_set(True)
+cube_b.select_set(True)
+bpy.context.view_layer.objects.active = cube_a
+bpy.ops.object.join()
+gen_obj = bpy.context.active_object
+gen_obj.name = "Generator_Multi_Test"
+
+settings = bpy.context.scene.autoquad_settings
+settings.auto_target_quads = True
+settings.quality = 1.0
+settings.separate_loose_parts = True
+
+# Step through the generator
+gen = run_retopology_steps(bpy.context, gen_obj, settings)
+yielded_stages = []
+final_bm = None
+
+step_idx = 0
+for stage, msg, current_step, total_steps, payload in gen:
+    step_idx += 1
+    yielded_stages.append(stage)
+    print(f"  Step {step_idx}: Stage='{stage}', Step={current_step}/{total_steps}, Msg='{msg}'")
+    if stage == "FINISHED":
+        final_bm = payload
+
+assert "INITIALIZING" in yielded_stages, "Generator missing INITIALIZING stage"
+assert "REMESHING_PART" in yielded_stages, "Generator missing REMESHING_PART stage"
+assert "COMBINING" in yielded_stages, "Generator missing COMBINING stage"
+assert "FINISHED" in yielded_stages, "Generator missing FINISHED stage"
+assert final_bm is not None, "Final BMesh payload was None"
+assert len(final_bm.faces) > 0, "Final BMesh has 0 faces"
+print(f"  ✓ Generator yielded {len(yielded_stages)} discrete stages successfully.")
+print(f"  ✓ Final recombined BMesh face count: {len(final_bm.faces):,}")
+final_bm.free()
 
 print("\n" + "=" * 60)
 print("ALL REGRESSION AND FUNCTIONAL TESTS PASSED SUCCESSFULLY!")
