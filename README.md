@@ -9,6 +9,10 @@
 
 Developed by **Doctor Jana** for **Blender 4.2 LTS and newer** (including Blender 5.0 and 5.2+). It converts dense sculpts, photogrammetry 3D scans, CAD models, or uneven triangular meshes into production-ready quad geometry.
 
+<p align="center">
+  <img src="SkullRetopo.gif" alt="AutoQuad Remesher Demo" width="720">
+</p>
+
 ---
 
 ## Clean, Uncluttered Interface
