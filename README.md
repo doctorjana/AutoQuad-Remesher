@@ -68,11 +68,12 @@ When you click **Remesh**, a responsive, asynchronous loading indicator is displ
 
 ## Installation & Download
 
-### Method 1: Direct Download (Standard Release Zip)
+### Method 1: Direct Download (From GitHub Releases Tag)
 
-👉 **[Download autoquad_remesher-1.3.7.zip](https://github.com/doctorjana/AutoQuad-Remesher/raw/master/release/autoquad_remesher-1.3.7.zip)** *(Direct Download, 76 KB)*
+📦 **[Download autoquad_remesher-1.3.7.zip](https://github.com/doctorjana/AutoQuad-Remesher/releases/download/v1.3.7/autoquad_remesher-1.3.7.zip)** *(Official Release Asset, 76 KB)*  
+🏷️ **[View GitHub Release v1.3.7](https://github.com/doctorjana/AutoQuad-Remesher/releases/tag/v1.3.7)**
 
-1. In Blender, open **Edit > Preferences > Get Extensions** (or **Add-ons** in older preferences).
+1. In Blender, open **Edit > Preferences > Get Extensions** (or **Add-ons**).
 2. Click the top-right chevron menu **(∨)** and select **Install from Disk...**
 3. Select the downloaded `autoquad_remesher-1.3.7.zip` and confirm.
 4. In the 3D Viewport, press <kbd>N</kbd> to open the sidebar and select the **AutoQuad** tab!
@@ -88,10 +89,10 @@ You can install and enable AutoQuad automatically from inside Blender without do
 ```python
 import os, tempfile, urllib.request, bpy
 
-url = "https://github.com/doctorjana/AutoQuad-Remesher/raw/master/release/autoquad_remesher-1.3.7.zip"
+url = "https://github.com/doctorjana/AutoQuad-Remesher/releases/download/v1.3.7/autoquad_remesher-1.3.7.zip"
 tmp_zip = os.path.join(tempfile.gettempdir(), "autoquad_remesher-1.3.7.zip")
 
-print("Downloading AutoQuad Remesher...")
+print("Downloading AutoQuad Remesher from GitHub Releases...")
 urllib.request.urlretrieve(url, tmp_zip)
 
 if hasattr(bpy.ops.preferences, "extension_install"):
